@@ -3111,7 +3111,11 @@ function ImageLightboxCarousel({
 // ==========================================
 // MAIN COMPONENT
 // ==========================================
-export default function FileManager() {
+interface FileManagerProps {
+  onLogout?: () => void;
+}
+
+export default function FileManager({ onLogout }: FileManagerProps) {
   const [token, setToken] = useState<string | null>(
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null,
   );
@@ -3275,6 +3279,7 @@ export default function FileManager() {
       if (typeof window !== "undefined" && String(err).includes("401")) {
         setToken(null);
         api.logout();
+        if (onLogout) onLogout();
       }
       return null;
     } finally {
@@ -3284,7 +3289,7 @@ export default function FileManager() {
 
   useEffect(() => {
     if (typeof window !== "undefined" && !token) {
-      // TODO: mostrar pantalla de login inline en vez de redirigir
+      if (onLogout) onLogout();
       return;
     }
     fetchAll();
@@ -4609,7 +4614,7 @@ export default function FileManager() {
         style={{
           gridArea: "dir",
           position: "relative",
-          background: "#f8fbff",
+          background: "#ffffff",
           display: "grid",
           gridTemplateRows: "auto minmax(0, 1fr)",
           height: "100%",

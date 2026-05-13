@@ -377,6 +377,9 @@ export function logout() {
   localStorage.removeItem("user_id");
   localStorage.removeItem("username");
   localStorage.removeItem("metalurgia_user");
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("auth_logout"));
+  }
 }
 
 /**
@@ -409,6 +412,7 @@ async function apiFetchWithAuth(path: string, init?: RequestInit): Promise<Respo
 
   if (!newToken) {
     // No se pudo refrescar → devolver el 401 original
+    logout();
     return res;
   }
 

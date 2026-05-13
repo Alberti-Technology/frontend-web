@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import * as api from '../services/api'
 
 export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
@@ -6,6 +6,7 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const passwordRef = useRef<HTMLInputElement>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -78,6 +79,12 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
               placeholder="ej: diego"
               autoFocus
               style={styles.input}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  passwordRef.current?.focus()
+                }
+              }}
               onFocus={(e) => Object.assign(e.target.style, styles.inputFocus)}
               onBlur={(e) => Object.assign(e.target.style, { borderColor: 'var(--border)', boxShadow: 'none' })}
             />
@@ -88,6 +95,7 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
             <input
               id="login-password"
               type="password"
+              ref={passwordRef}
               value={password}
               onChange={(e) => { setPassword(e.target.value); setError(null) }}
               placeholder="••••••••"
