@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import altechLogo from '../../images/altech-logo.svg'
 
 interface SidebarProps {
   onLogoutConfirm: () => void;
@@ -20,11 +21,7 @@ export default function Sidebar({ onLogoutConfirm }: SidebarProps) {
           onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.btnHover)}
           onMouseLeave={(e) => Object.assign(e.currentTarget.style, styles.btnNormal)}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-            <polyline points="2 17 12 22 22 17"></polyline>
-            <polyline points="2 12 12 17 22 12"></polyline>
-          </svg>
+          <img src={altechLogo} alt="Alberti Technology" style={{ width: '24px', height: 'auto' }} />
         </a>
 
         {/* Bottom: Logout Button */}
@@ -117,19 +114,19 @@ const styles: Record<string, React.CSSProperties> = {
     width: '42px',
     height: '42px',
     borderRadius: '12px',
-    background: 'transparent',
-    color: '#339eea',
+    background: 'linear-gradient(135deg, #339eea, #0d5a91)',
     border: 'none',
     transition: 'all 0.2s ease',
     cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(51, 158, 234, 0.3)',
   },
   btnHover: {
-    background: '#eef8ff',
     transform: 'translateY(-2px)',
+    boxShadow: '0 6px 16px rgba(51, 158, 234, 0.4)',
   },
   btnNormal: {
-    background: 'transparent',
     transform: 'none',
+    boxShadow: '0 4px 12px rgba(51, 158, 234, 0.3)',
   },
   logoutBtn: {
     display: 'flex',

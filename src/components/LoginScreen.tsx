@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import * as api from '../services/api'
+import altechLogo from '../../images/altech-logo.svg'
 
 export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [username, setUsername] = useState('')
@@ -35,99 +36,98 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        {/* Logo / Brand */}
-        <div style={styles.brandSection}>
-          <div style={styles.logoIcon}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-              <polyline points="2 17 12 22 22 17"></polyline>
-              <polyline points="2 12 12 17 22 12"></polyline>
-            </svg>
-          </div>
-          <h1 style={styles.brandTitle}>Alberti Technology</h1>
-          <p style={styles.brandSubtitle}>Panel de Análisis Metalográfico</p>
+        {/* Left Side: Form */}
+        <div style={styles.leftPanel}>
+          <form onSubmit={handleSubmit} style={styles.form}>
+            <h2 style={styles.formTitle}>Iniciar Sesión</h2>
+            <p style={styles.formDesc}>
+              Ingresá tus credenciales para acceder al panel de trabajo.
+            </p>
+
+            {error && (
+              <div style={styles.errorBox}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="15" y1="9" x2="9" y2="15"></line>
+                  <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label} htmlFor="login-username">Usuario</label>
+              <input
+                id="login-username"
+                type="text"
+                value={username}
+                onChange={(e) => { setUsername(e.target.value); setError(null) }}
+                placeholder="ej: diego"
+                autoFocus
+                style={styles.input}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    passwordRef.current?.focus()
+                  }
+                }}
+                onFocus={(e) => Object.assign(e.target.style, styles.inputFocus)}
+                onBlur={(e) => Object.assign(e.target.style, { borderColor: 'var(--border)', boxShadow: 'none' })}
+              />
+            </div>
+
+            <div style={styles.fieldGroup}>
+              <label style={styles.label} htmlFor="login-password">Contraseña</label>
+              <input
+                id="login-password"
+                type="password"
+                ref={passwordRef}
+                value={password}
+                onChange={(e) => { setPassword(e.target.value); setError(null) }}
+                placeholder="••••••••"
+                style={styles.input}
+                onFocus={(e) => Object.assign(e.target.style, styles.inputFocus)}
+                onBlur={(e) => Object.assign(e.target.style, { borderColor: 'var(--border)', boxShadow: 'none' })}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                ...styles.submitBtn,
+                ...(loading ? styles.submitBtnDisabled : {}),
+              }}
+            >
+              {loading ? (
+                <span style={styles.loadingContent}>
+                  <span style={styles.spinner} />
+                  Conectando...
+                </span>
+              ) : (
+                'Ingresar al Panel'
+              )}
+            </button>
+          </form>
         </div>
 
-        {/* Divider */}
-        <div style={styles.divider} />
+        {/* Vertical Divider */}
+        <div style={styles.verticalDivider} />
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} style={styles.form}>
-          <h2 style={styles.formTitle}>Iniciar Sesión</h2>
-          <p style={styles.formDesc}>
-            Ingresá tus credenciales para acceder al panel de trabajo.
+        {/* Right Side: Brand */}
+        <div style={styles.rightPanel}>
+          <div style={styles.logoWrapper}>
+            <img src={altechLogo} alt="Alberti Technology Logo" style={styles.bigLogo} />
+          </div>
+          <div style={styles.brandTextWrapper}>
+            <h1 style={styles.brandName}>Alberti</h1>
+            <h1 style={styles.brandNameSecondary}>Technology</h1>
+          </div>
+          
+          <p style={styles.footer}>
+            © 2026 Alberti Technology.
           </p>
-
-          {error && (
-            <div style={styles.errorBox}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="15" y1="9" x2="9" y2="15"></line>
-                <line x1="9" y1="9" x2="15" y2="15"></line>
-              </svg>
-              <span>{error}</span>
-            </div>
-          )}
-
-          <div style={styles.fieldGroup}>
-            <label style={styles.label} htmlFor="login-username">Usuario</label>
-            <input
-              id="login-username"
-              type="text"
-              value={username}
-              onChange={(e) => { setUsername(e.target.value); setError(null) }}
-              placeholder="ej: diego"
-              autoFocus
-              style={styles.input}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  passwordRef.current?.focus()
-                }
-              }}
-              onFocus={(e) => Object.assign(e.target.style, styles.inputFocus)}
-              onBlur={(e) => Object.assign(e.target.style, { borderColor: 'var(--border)', boxShadow: 'none' })}
-            />
-          </div>
-
-          <div style={styles.fieldGroup}>
-            <label style={styles.label} htmlFor="login-password">Contraseña</label>
-            <input
-              id="login-password"
-              type="password"
-              ref={passwordRef}
-              value={password}
-              onChange={(e) => { setPassword(e.target.value); setError(null) }}
-              placeholder="••••••••"
-              style={styles.input}
-              onFocus={(e) => Object.assign(e.target.style, styles.inputFocus)}
-              onBlur={(e) => Object.assign(e.target.style, { borderColor: 'var(--border)', boxShadow: 'none' })}
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              ...styles.submitBtn,
-              ...(loading ? styles.submitBtnDisabled : {}),
-            }}
-          >
-            {loading ? (
-              <span style={styles.loadingContent}>
-                <span style={styles.spinner} />
-                Conectando...
-              </span>
-            ) : (
-              'Ingresar al Panel'
-            )}
-          </button>
-        </form>
-
-        {/* Footer */}
-        <p style={styles.footer}>
-          © 2026 Alberti Technology. Todos los derechos reservados.
-        </p>
+        </div>
       </div>
 
       {/* Spinner keyframe (injected once) */}
@@ -153,54 +153,74 @@ const styles: Record<string, React.CSSProperties> = {
   },
   card: {
     width: '100%',
-    maxWidth: '440px',
+    maxWidth: '860px',
     background: 'white',
     borderRadius: '28px',
     border: '1px solid rgba(16, 36, 63, 0.08)',
     boxShadow: '0 22px 48px rgba(16, 36, 63, 0.12)',
     overflow: 'hidden',
     display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    padding: '40px 36px 28px',
+    flexDirection: 'row',
+    minHeight: '480px',
   },
-  brandSection: {
+  leftPanel: {
+    flex: 1,
+    padding: '48px 40px',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+  },
+  rightPanel: {
+    position: 'relative',
+    flex: 1,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '8px',
-    marginBottom: '4px',
+    justifyContent: 'center',
+    padding: '48px 40px',
+    background: '#fafcff',
   },
-  logoIcon: {
-    width: '56px',
-    height: '56px',
-    borderRadius: '16px',
+  verticalDivider: {
+    width: '1px',
+    background: 'rgba(16, 36, 63, 0.06)',
+    margin: '36px 0',
+  },
+  logoWrapper: {
+    width: '110px',
+    height: '110px',
+    borderRadius: '28px',
     background: 'linear-gradient(135deg, #339eea, #0d5a91)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0 4px 12px rgba(51, 158, 234, 0.3)',
-    marginBottom: '4px',
+    boxShadow: '0 12px 32px rgba(51, 158, 234, 0.25)',
+    marginBottom: '16px',
   },
-  brandTitle: {
+  bigLogo: {
+    width: '58px',
+    height: 'auto',
+  },
+  brandTextWrapper: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px',
+  },
+  brandName: {
     margin: 0,
-    fontSize: '1.4rem',
+    fontSize: '2.5rem',
     fontWeight: 800,
     color: '#10243f',
-    letterSpacing: '0.02em',
-    textTransform: 'uppercase' as const,
+    letterSpacing: '-0.02em',
+    lineHeight: 1,
   },
-  brandSubtitle: {
+  brandNameSecondary: {
     margin: 0,
-    fontSize: '0.88rem',
-    color: '#4d6684',
-    fontWeight: 500,
-  },
-  divider: {
-    width: '100%',
-    height: '1px',
-    background: 'rgba(16, 36, 63, 0.1)',
-    margin: '24px 0',
+    fontSize: '2.5rem',
+    fontWeight: 300,
+    color: '#339eea',
+    letterSpacing: '-0.02em',
+    lineHeight: 1,
   },
   form: {
     width: '100%',
@@ -291,7 +311,9 @@ const styles: Record<string, React.CSSProperties> = {
     animation: 'login-spin 0.9s linear infinite',
   },
   footer: {
-    marginTop: '24px',
+    position: 'absolute',
+    bottom: '32px',
+    margin: 0,
     fontSize: '0.78rem',
     color: '#8a99ad',
     textAlign: 'center' as const,
