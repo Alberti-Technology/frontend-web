@@ -1,10 +1,26 @@
 import { API_BASE_URL, API_WAKEUP_RETRY_MS } from "../config/apiConfig";
+import { invoke } from "@tauri-apps/api/core";
 
 export const BASE_URL = API_BASE_URL;
 const HF_MASK_ENDPOINT = (
   import.meta.env.VITE_HF_MASK_ENDPOINT ||
   "https://AlbertiTechnology-materialai.hf.space/segment/45951/rgb/"
 ).trim();
+
+let tauriPort: number | null = null;
+let tauriSecret: string | null = null;
+
+async function initTauriBackend() {
+  if (tauriPort !== null) return;
+  try {
+    const info: any = await invoke("get_backend_info");
+    tauriPort = info.port;
+    tauriSecret = info.token;
+  } catch (e) {
+    tauriPort = 8000;
+    tauriSecret = "";
+  }
+}
 
 type ApiRequestError = Error & {
   status?: number;
@@ -149,8 +165,12 @@ function cloneRequestInit(init?: RequestInit): RequestInit | undefined {
   };
 }
 
-function requestUrl(path: string): string {
+async function requestUrl(path: string): Promise<string> {
+  await initTauriBackend();
   const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+  if (tauriPort && tauriPort !== 8000) {
+    return `http://127.0.0.1:${tauriPort}/${cleanPath}`;
+  }
   return `${BASE_URL}${cleanPath}`;
 }
 
@@ -220,7 +240,8 @@ async function runRecoveryLoop() {
     emitRecoveryState();
 
     try {
-      const response = await fetch(requestUrl(pending.path), pending.init);
+      const url = await requestUrl(pending.path);
+      const response = await fetch(url, pending.init);
       if (shouldTreatAsSleepingServer(response)) {
         await wait(API_WAKEUP_RETRY_MS);
         continue;
@@ -258,10 +279,18 @@ function enqueueDeferredRequest(path: string, init?: RequestInit) {
 async function apiFetch(path: string, init?: RequestInit) {
   if (isRecovering) await waitForRecoveryToFinish();
 
-  const safeInit = cloneRequestInit(init);
+  await initTauriBackend();
+
+  const safeInit = cloneRequestInit(init) || {};
+  if (tauriSecret) {
+    const headers = new Headers(safeInit.headers);
+    headers.set("X-Tauri-Secret", tauriSecret);
+    safeInit.headers = headers;
+  }
 
   try {
-    const response = await fetch(requestUrl(path), safeInit);
+    const url = await requestUrl(path);
+    const response = await fetch(url, safeInit);
     if (shouldTreatAsSleepingServer(response)) {
       return enqueueDeferredRequest(path, safeInit);
     }
@@ -298,7 +327,8 @@ async function tryRefreshToken(): Promise<string | null> {
   if (!refreshToken) return null;
 
   try {
-    const res = await fetch(requestUrl("member/token/refresh/"), {
+    const url = await requestUrl("member/token/refresh/");
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh: refreshToken }),
