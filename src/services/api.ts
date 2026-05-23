@@ -1,26 +1,10 @@
 import { API_BASE_URL, API_WAKEUP_RETRY_MS } from "../config/apiConfig";
-import { invoke } from "@tauri-apps/api/core";
 
 export const BASE_URL = API_BASE_URL;
 const HF_MASK_ENDPOINT = (
   import.meta.env.VITE_HF_MASK_ENDPOINT ||
   "https://AlbertiTechnology-materialai.hf.space/segment/45951/rgb/"
 ).trim();
-
-let tauriPort: number | null = null;
-let tauriSecret: string | null = null;
-
-async function initTauriBackend() {
-  if (tauriPort !== null) return;
-  try {
-    const info: any = await invoke("get_backend_info");
-    tauriPort = info.port;
-    tauriSecret = info.token;
-  } catch (e) {
-    tauriPort = 8000;
-    tauriSecret = "";
-  }
-}
 
 type ApiRequestError = Error & {
   status?: number;
@@ -165,12 +149,8 @@ function cloneRequestInit(init?: RequestInit): RequestInit | undefined {
   };
 }
 
-async function requestUrl(path: string): Promise<string> {
-  await initTauriBackend();
+function requestUrl(path: string): string {
   const cleanPath = path.startsWith("/") ? path.slice(1) : path;
-  if (tauriPort && tauriPort !== 8000) {
-    return `http://127.0.0.1:${tauriPort}/${cleanPath}`;
-  }
   return `${BASE_URL}${cleanPath}`;
 }
 
@@ -240,7 +220,7 @@ async function runRecoveryLoop() {
     emitRecoveryState();
 
     try {
-      const url = await requestUrl(pending.path);
+      const url = requestUrl(pending.path);
       const response = await fetch(url, pending.init);
       if (shouldTreatAsSleepingServer(response)) {
         await wait(API_WAKEUP_RETRY_MS);
@@ -279,17 +259,10 @@ function enqueueDeferredRequest(path: string, init?: RequestInit) {
 async function apiFetch(path: string, init?: RequestInit) {
   if (isRecovering) await waitForRecoveryToFinish();
 
-  await initTauriBackend();
-
   const safeInit = cloneRequestInit(init) || {};
-  if (tauriSecret) {
-    const headers = new Headers(safeInit.headers);
-    headers.set("X-Tauri-Secret", tauriSecret);
-    safeInit.headers = headers;
-  }
 
   try {
-    const url = await requestUrl(path);
+    const url = requestUrl(path);
     const response = await fetch(url, safeInit);
     if (shouldTreatAsSleepingServer(response)) {
       return enqueueDeferredRequest(path, safeInit);
@@ -308,55 +281,13 @@ export function subscribeApiRecovery(listener: RecoveryListener) {
   };
 }
 
-// ====================== JWT AUTH ======================
-
-let isRefreshing = false;
-let refreshSubscribers: ((token: string) => void)[] = [];
-
-function onTokenRefreshed(newToken: string) {
-  refreshSubscribers.forEach((cb) => cb(newToken));
-  refreshSubscribers = [];
-}
-
-function addRefreshSubscriber(cb: (token: string) => void) {
-  refreshSubscribers.push(cb);
-}
-
-async function tryRefreshToken(): Promise<string | null> {
-  const refreshToken = localStorage.getItem("refresh_token");
-  if (!refreshToken) return null;
-
-  try {
-    const url = await requestUrl("member/token/refresh/");
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh: refreshToken }),
-    });
-
-    if (!res.ok) {
-      // Refresh token expirado o usuario desactivado → forzar logout
-      logout();
-      return null;
-    }
-
-    const data = await res.json();
-    localStorage.setItem("access_token", data.access);
-    // Si el backend rota refresh tokens, guardar el nuevo
-    if (data.refresh) {
-      localStorage.setItem("refresh_token", data.refresh);
-    }
-    return data.access;
-  } catch {
-    return null;
-  }
-}
+// ====================== AUTH ======================
 
 function getHeaders(isFormData = false) {
   const token = localStorage.getItem("access_token");
   const headers: HeadersInit = {};
   if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+    headers["Authorization"] = `Token ${token}`;
   }
   if (!isFormData) {
     headers["Content-Type"] = "application/json";
@@ -378,12 +309,13 @@ export async function login(user: string, pass: string): Promise<string> {
 
     if (res.ok) {
       const data = await res.json();
-      if (data.access) {
-        localStorage.setItem("access_token", data.access);
+      const token = data.access || data.token;
+      if (token) {
+        localStorage.setItem("access_token", token);
         localStorage.setItem("refresh_token", data.refresh || "");
         localStorage.setItem("user_id", data.user_id?.toString() || "");
         localStorage.setItem("username", data.username || user);
-        return data.access;
+        return token;
       }
     }
 
@@ -413,49 +345,16 @@ export function logout() {
 }
 
 /**
- * Wrapper de apiFetch que auto-refreshea el JWT si recibe un 401.
+ * Wrapper de apiFetch que cierra sesión si recibe un 401.
  */
 async function apiFetchWithAuth(path: string, init?: RequestInit): Promise<Response> {
   const res = await apiFetch(path, init);
 
-  if (res.status !== 401) return res;
-
-  // Token expirado → intentar refresh
-  if (isRefreshing) {
-    // Ya hay un refresh en curso, esperar a que termine
-    return new Promise<Response>((resolve) => {
-      addRefreshSubscriber((newToken) => {
-        const newInit = cloneRequestInit(init);
-        if (newInit) {
-          const headers = new Headers(newInit.headers);
-          headers.set("Authorization", `Bearer ${newToken}`);
-          newInit.headers = headers;
-        }
-        resolve(apiFetch(path, newInit));
-      });
-    });
-  }
-
-  isRefreshing = true;
-  const newToken = await tryRefreshToken();
-  isRefreshing = false;
-
-  if (!newToken) {
-    // No se pudo refrescar → devolver el 401 original
+  if (res.status === 401) {
     logout();
-    return res;
   }
 
-  onTokenRefreshed(newToken);
-
-  // Reintentar la request original con el nuevo token
-  const retryInit = cloneRequestInit(init);
-  if (retryInit) {
-    const headers = new Headers(retryInit.headers);
-    headers.set("Authorization", `Bearer ${newToken}`);
-    retryInit.headers = headers;
-  }
-  return apiFetch(path, retryInit);
+  return res;
 }
 
 // -------------------------------------------------------------

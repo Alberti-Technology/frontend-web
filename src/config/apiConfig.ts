@@ -1,18 +1,13 @@
-const rawApiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").trim();
+const rawApiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "/").trim();
 const rawCloudinaryBaseUrl = (
   import.meta.env.VITE_CLOUDINARY_BASE_URL || ""
 ).trim();
 
-if (!rawApiBaseUrl) {
-  throw new Error(
-    "Falta VITE_API_BASE_URL. Definila en frontend/.env.",
-  );
-}
-
 function normalizeBaseUrl(rawUrl: string, envVarName: string): string {
   let parsed: URL;
   try {
-    parsed = new URL(rawUrl);
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    parsed = new URL(rawUrl, base);
   } catch {
     throw new Error(`${envVarName} no es una URL valida: ${rawUrl}`);
   }
