@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import altechLogo from '../../images/altech-logo.svg'
+import altechLogo from '../../images/altech-logo-sin-fondo.svg'
 
 interface SidebarProps {
   onLogoutConfirm: () => void;
@@ -21,7 +21,7 @@ export default function Sidebar({ onLogoutConfirm }: SidebarProps) {
           onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.btnHover)}
           onMouseLeave={(e) => Object.assign(e.currentTarget.style, styles.btnNormal)}
         >
-          <img src={altechLogo} alt="Alberti Technology" style={{ width: '24px', height: 'auto' }} />
+          <img src={altechLogo} alt="Alberti Technology" style={{ width: '60%', height: 'auto', minWidth: '16px' }} />
         </a>
 
         {/* Bottom: Logout Button */}
@@ -111,14 +111,15 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: '42px',
-    height: '42px',
+    width: '100%',
+    maxWidth: '42px',
+    aspectRatio: '1 / 1',
+    height: 'auto',
     borderRadius: '12px',
-    background: 'linear-gradient(135deg, #339eea, #0d5a91)',
+    background: 'transparent',
     border: 'none',
     transition: 'all 0.2s ease',
     cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(51, 158, 234, 0.3)',
   },
   btnHover: {
     transform: 'translateY(-2px)',

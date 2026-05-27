@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react'
 import * as api from '../services/api'
-import altechLogo from '../../images/altech-logo.svg'
+import altechLogo from '../../images/altech-logo-sin-fondo.svg'
 
 export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const passwordRef = useRef<HTMLInputElement>(null)
@@ -77,19 +78,53 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
             </div>
 
             <div style={styles.fieldGroup}>
-              <label style={styles.label} htmlFor="login-password">Contraseña</label>
-              <input
-                id="login-password"
-                type="password"
+            <label htmlFor="password" style={styles.label}>Contraseña</label>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input 
                 ref={passwordRef}
+                id="password"
+                type={showPassword ? "text" : "password"}
+                placeholder="Ingresá tu contraseña"
                 value={password}
-                onChange={(e) => { setPassword(e.target.value); setError(null) }}
-                placeholder="••••••••"
-                style={styles.input}
-                onFocus={(e) => Object.assign(e.target.style, styles.inputFocus)}
-                onBlur={(e) => Object.assign(e.target.style, { borderColor: 'var(--border)', boxShadow: 'none' })}
+                onChange={(e) => setPassword(e.target.value)}
+                style={{ ...styles.input, paddingRight: '40px' }}
+                onFocus={(e) => Object.assign(e.currentTarget.style, styles.inputFocus)}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border)'
+                  e.currentTarget.style.boxShadow = 'none'
+                }}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#4d6684',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                title={showPassword ? "Ocultar contraseña" : "Ver contraseña"}
+              >
+                {showPassword ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                )}
+              </button>
             </div>
+          </div>
 
             <button
               type="submit"
@@ -188,16 +223,13 @@ const styles: Record<string, React.CSSProperties> = {
   logoWrapper: {
     width: '110px',
     height: '110px',
-    borderRadius: '28px',
-    background: 'linear-gradient(135deg, #339eea, #0d5a91)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0 12px 32px rgba(51, 158, 234, 0.25)',
     marginBottom: '16px',
   },
   bigLogo: {
-    width: '58px',
+    width: '90px',
     height: 'auto',
   },
   brandTextWrapper: {
@@ -209,16 +241,16 @@ const styles: Record<string, React.CSSProperties> = {
   brandName: {
     margin: 0,
     fontSize: '2.5rem',
-    fontWeight: 800,
-    color: '#10243f',
+    fontWeight: 300,
+    color: '#339eea',
     letterSpacing: '-0.02em',
     lineHeight: 1,
   },
   brandNameSecondary: {
     margin: 0,
     fontSize: '2.5rem',
-    fontWeight: 300,
-    color: '#339eea',
+    fontWeight: 800,
+    color: '#10243f',
     letterSpacing: '-0.02em',
     lineHeight: 1,
   },

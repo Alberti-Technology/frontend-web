@@ -2637,6 +2637,29 @@ function ImageLightboxCarousel({
               )}
             </div>
           )}
+          {hasCalibration && currentCalibration && (
+            <div
+              style={{
+                fontSize: "0.78rem",
+                fontWeight: 600,
+                lineHeight: 1.4,
+                marginTop: 8,
+                padding: "4px 8px",
+                background: "rgba(51, 158, 234, 0.15)",
+                borderLeft: "3px solid #339eea",
+                borderRadius: "0 4px 4px 0",
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+              }}
+            >
+              <div style={{ color: "#99d1ff", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Datos de calibración</div>
+              <div>{currentCalibration.micrometers} µm = {Math.round(currentCalibration.pixelLength)} px</div>
+              {currentCalibration.umByPx && (
+                <div style={{ color: "#eef8ff" }}>Ratio: {(currentCalibration.umByPx).toFixed(4)} µm/px</div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ---- MAIN (50%) ---- */}
@@ -2852,7 +2875,7 @@ function ImageLightboxCarousel({
               : calibrationMode
                 ? "Marcá la escala con una línea"
                 : hasCalibration
-                  ? "Micrografía calibrada"
+                  ? calibrationRatio ? `Calibrada: ${calibrationRatio.toFixed(4)} µm/px` : "Micrografía calibrada"
                   : "Micrografía calibrable"}
           </div>
         </div>
@@ -4888,6 +4911,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          minWidth: 0,
         }}
       >
         <div
@@ -4901,6 +4925,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           style={{
             flex: 1,
             minHeight: 0,
+            minWidth: 0,
             overflowY: "hidden",
             overflowX: "hidden",
             padding: 14,
@@ -4917,6 +4942,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               gap: 10,
               flex: 1,
               minHeight: 0,
+              minWidth: 0,
             }}
           >
             <div
@@ -4932,6 +4958,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                 padding: 10,
                 background: "#f9fcff",
                 minHeight: 120,
+                minWidth: 0,
                 display: "flex",
                 flexDirection: "column",
                 gap: 10,
@@ -5018,6 +5045,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                                 textOverflow: "ellipsis",
                                 whiteSpace: "nowrap",
                                 flex: 1,
+                                minWidth: 0,
                               }}
                             >
                               {pdf.value || `Informe_ID_${pdf.id}`}.pdf
@@ -5048,6 +5076,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                 padding: 10,
                 background: "#f9fcff",
                 minHeight: 120,
+                minWidth: 0,
                 display: "flex",
                 flexDirection: "column",
                 height: "100%",
@@ -5146,6 +5175,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                               textOverflow: "ellipsis",
                               whiteSpace: "nowrap",
                               flex: 1,
+                              minWidth: 0,
                             }}
                             title={getMuestraDisplayName(mue)}
                           >
@@ -5180,6 +5210,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               alignItems: "center",
               gap: 8,
               marginTop: 2,
+              minWidth: 0,
             }}
           >
             {showInformeDispatchMessage && (
@@ -5212,7 +5243,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                   !!uploadProgress
                     ? 0.6
                     : 1,
-                width: 172,
+                width: "100%",
+                maxWidth: 172,
                 minHeight: 84,
                 justifyContent: "center",
                 borderRadius: 12,

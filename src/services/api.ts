@@ -287,7 +287,7 @@ function getHeaders(isFormData = false) {
   const token = localStorage.getItem("access_token");
   const headers: HeadersInit = {};
   if (token) {
-    headers["Authorization"] = `Token ${token}`;
+    headers["Authorization"] = `Bearer ${token}`;
   }
   if (!isFormData) {
     headers["Content-Type"] = "application/json";

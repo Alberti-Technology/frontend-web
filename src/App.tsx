@@ -43,7 +43,7 @@ export default function App() {
           flex: 1,
           display: 'grid',
           width: '100%',
-          gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 22fr) minmax(0, 55fr) minmax(0, 20fr)',
+          gridTemplateColumns: 'minmax(60px, 3fr) minmax(180px, 22fr) minmax(300px, 55fr) minmax(200px, 20fr)',
           gridTemplateRows: 'minmax(0, 1fr) minmax(0, 1fr)',
           gridTemplateAreas: `"sidebar dir gallery reports" "sidebar dir gallery reports"`,
           gap: '12px',
