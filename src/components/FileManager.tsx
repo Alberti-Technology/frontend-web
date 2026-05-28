@@ -16,7 +16,7 @@ const DRAWINGS_STORAGE_KEY = "draw_cache_v1_by_image_url";
 
 type CalibrationMetaStore = Record<
   string,
-  { pixelLength: number; micrometers: number; width?: number; height?: number }
+  { pixelLength: number; micrometers: number; width?: number; height?: number; umByPx?: number; }
 >;
 
 function readCalibrationMetaStore(): CalibrationMetaStore {
@@ -32,6 +32,58 @@ function readCalibrationMetaStore(): CalibrationMetaStore {
 function writeCalibrationMetaStore(store: CalibrationMetaStore) {
   if (typeof window === "undefined") return;
   localStorage.setItem(CALIBRATION_META_STORAGE_KEY, JSON.stringify(store));
+}
+
+const autoCalibrateQueue: Array<{ fd: FormData; imageUrl: string }> = [];
+let isProcessingCalibrationQueue = false;
+
+const addMicrografiaToAutoCalibrationQueue = (fd: FormData, apiRes: any) => {
+  const file = fd.get("imagen") || fd.get("file");
+  const imageUrl = apiRes?.imagen || apiRes?.url || apiRes?.image;
+  if (file instanceof Blob && imageUrl) {
+    const autoCalFd = new FormData();
+    autoCalFd.append("file", file, "image.jpg");
+    autoCalibrateQueue.push({
+      fd: autoCalFd,
+      imageUrl: imageUrl
+    });
+    processAutoCalibrateQueue();
+  }
+};
+
+async function processAutoCalibrateQueue() {
+  if (isProcessingCalibrationQueue) return;
+  isProcessingCalibrationQueue = true;
+
+  while (autoCalibrateQueue.length > 0) {
+    const item = autoCalibrateQueue.shift();
+    if (!item) continue;
+    try {
+      const res = await fetch("https://AlbertiTechnology-materialai.hf.space/escala/", {
+        method: "POST",
+        body: item.fd,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.um_per_pixel && data.scale_detection?.vertices?.length >= 2) {
+          const micrometers = parseFloat(data.ocr?.numero_detectado || "0");
+          const pxLen = micrometers > 0 ? micrometers / data.um_per_pixel : 1;
+          const store = readCalibrationMetaStore();
+          store[item.imageUrl] = {
+            pixelLength: pxLen,
+            micrometers: micrometers || 1,
+            umByPx: data.um_per_pixel,
+          };
+          writeCalibrationMetaStore(store);
+          window.dispatchEvent(new CustomEvent("calibration_updated", { detail: { url: item.imageUrl, data: store[item.imageUrl] } }));
+        }
+      }
+    } catch (err) {
+      console.error("Auto calibration error for", item.imageUrl, err);
+    }
+  }
+  isProcessingCalibrationQueue = false;
 }
 
 type ApiLikeError = {
@@ -1227,6 +1279,9 @@ function ImageLightboxCarousel({
     "overview" | "calibration" | "measurement" | "mask"
   >("overview");
   const [pixelLength, setPixelLength] = useState(0);
+  const [autoCalibrating, setAutoCalibrating] = useState(false);
+  const [autoCalibrationError, setAutoCalibrationError] = useState(false);
+  const [autoCalibrationDone, setAutoCalibrationDone] = useState(false);
   const [detectedPixelLength, setDetectedPixelLength] = useState(0);
   const [editorLayout, setEditorLayout] = useState({
     imageWidth: 640,
@@ -1389,6 +1444,9 @@ function ImageLightboxCarousel({
     setShowInputModal(false);
     setShowAutoDetectModal(false);
     setIsMaskDrawing(false);
+    setAutoCalibrating(false);
+    setAutoCalibrationError(false);
+    setAutoCalibrationDone(false);
     clearCanvas();
 
     // If the user was using a drawing tool or viewing the mask panel,
@@ -1409,6 +1467,80 @@ function ImageLightboxCarousel({
     }
   }, [activeSidebarTool, currentImageIsCalibrable]);
 
+  useEffect(() => {
+    const handleCalibrationUpdated = (e: any) => {
+      const { url, data } = e.detail;
+      setCalibrationData((prev) => {
+         const next = { ...prev, [url]: data };
+         writeCalibrationMetaStore(next);
+         return next;
+      });
+    };
+    window.addEventListener("calibration_updated", handleCalibrationUpdated);
+    return () => window.removeEventListener("calibration_updated", handleCalibrationUpdated);
+  }, []);
+
+  useEffect(() => {
+    if (!currentImageIsCalibrable) {
+      setAutoCalibrating(false);
+      setAutoCalibrationError(false);
+      setAutoCalibrationDone(false);
+      return;
+    }
+    if (hasCalibration) return;
+
+    let isMounted = true;
+    setAutoCalibrating(true);
+    setAutoCalibrationError(false);
+    setAutoCalibrationDone(false);
+
+    const performAutoCalibration = async () => {
+      try {
+        const response = await fetch(currentImage.url);
+        const blob = await response.blob();
+        
+        const fd = new FormData();
+        fd.append("file", blob, "image.jpg");
+        
+        const res = await fetch("https://AlbertiTechnology-materialai.hf.space/escala/", {
+          method: "POST",
+          body: fd,
+        });
+
+        if (!res.ok) throw new Error("Error in auto calibration");
+
+        const data = await res.json();
+        
+        if (data.um_per_pixel && data.scale_detection?.vertices?.length >= 2) {
+          if (isMounted) {
+            const micrometers = parseFloat(data.ocr?.numero_detectado || "0");
+            const pxLen = micrometers > 0 ? micrometers / data.um_per_pixel : 1;
+            
+            onSaveCalibration(currentImage.url, {
+              pixelLength: pxLen,
+              micrometers: micrometers || 1,
+              umByPx: data.um_per_pixel,
+            });
+            setAutoCalibrating(false);
+            setAutoCalibrationDone(true);
+          }
+        } else {
+          throw new Error("Invalid response");
+        }
+      } catch (err) {
+        if (isMounted) {
+          setAutoCalibrating(false);
+          setAutoCalibrationError(true);
+        }
+      }
+    };
+    performAutoCalibration();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentIndex, currentImage.url, hasCalibration, currentImageIsCalibrable, onSaveCalibration]);
+
   const resetCalibrationState = (goToOverview = false) => {
     setCalibrationMode(false);
     setLineStart(null);
@@ -1422,6 +1554,9 @@ function ImageLightboxCarousel({
     setShowConfirmModal(false);
     setShowInputModal(false);
     setShowAutoDetectModal(false);
+    setAutoCalibrating(false);
+    setAutoCalibrationError(false);
+    setAutoCalibrationDone(false);
     setMaskEditTool(null);
     setIsMaskDrawing(false);
     if (goToOverview) {
@@ -2168,6 +2303,67 @@ function ImageLightboxCarousel({
                 }}
               />
             )}
+            {(!hasCalibration || autoCalibrationDone || autoCalibrationError) &&
+              (autoCalibrating || autoCalibrationDone || autoCalibrationError) && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 16,
+                    right: 16,
+                    background: "rgba(16, 36, 63, 0.75)",
+                    backdropFilter: "blur(4px)",
+                    padding: "6px 12px",
+                    borderRadius: "20px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    color: "white",
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    zIndex: 10,
+                  }}
+                >
+                  {autoCalibrating && (
+                    <>
+                      <div
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: "#e8a317",
+                        }}
+                      />
+                      Autocalibrando...
+                    </>
+                  )}
+                  {autoCalibrationDone && (
+                    <>
+                      <div
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: "#4ade80",
+                        }}
+                      />
+                      Imagen autocalibrada mediante inteligencia artificial
+                    </>
+                  )}
+                  {autoCalibrationError && (
+                    <>
+                      <div
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          background: "#f87171",
+                        }}
+                      />
+                      No se pudo autocalibrar, debe calibrar manualmente
+                    </>
+                  )}
+                </div>
+              )}
             {measurementMode &&
               measurementLabelPos &&
               measurementDistanceUm !== null && (
@@ -3902,7 +4098,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         for (let i = 0; i < fds.length; i++) {
           setUploadProgress({ current: i + 1, total: fds.length });
           try {
-            await api.createMicrografia(fds[i]);
+            const apiRes = await api.createMicrografia(fds[i]);
+            addMicrografiaToAutoCalibrationQueue(fds[i], apiRes);
           } catch (e) {
             errors++;
             const maybeApiError = e as ApiLikeError;
@@ -3934,8 +4131,10 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         if (currentCreateModal?.type === "muestra") await api.createMuestra(fd);
         else if (currentCreateModal?.type === "region")
           await api.createRegion(fd);
-        else if (currentCreateModal?.type === "micrografia")
-          await api.createMicrografia(fd);
+        else if (currentCreateModal?.type === "micrografia") {
+          const apiRes = await api.createMicrografia(fd);
+          addMicrografiaToAutoCalibrationQueue(fd, apiRes);
+        }
       }
       const nextData = await fetchAll();
 
