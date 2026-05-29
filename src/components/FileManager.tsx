@@ -37,18 +37,16 @@ function writeCalibrationMetaStore(store: CalibrationMetaStore) {
 const autoCalibrateQueue: Array<{ fd: FormData; imageUrl: string }> = [];
 let isProcessingCalibrationQueue = false;
 
-const addMicrografiaToAutoCalibrationQueue = (fd: FormData, apiRes: any) => {
-  const file = fd.get("imagen") || fd.get("file");
-  const imageUrl = apiRes?.imagen || apiRes?.url || apiRes?.image;
-  if (file instanceof Blob && imageUrl) {
-    const autoCalFd = new FormData();
-    autoCalFd.append("file", file, "image.jpg");
-    autoCalibrateQueue.push({
-      fd: autoCalFd,
-      imageUrl: imageUrl
-    });
-    processAutoCalibrateQueue();
-  }
+const addMicrografiaToAutoCalibrationQueue = (file: Blob, normalizedImageUrl: string) => {
+  if (!file || !normalizedImageUrl) return;
+  const autoCalFd = new FormData();
+  autoCalFd.append("file", file, "image.jpg");
+  autoCalibrateQueue.push({
+    fd: autoCalFd,
+    imageUrl: normalizedImageUrl,
+  });
+  window.dispatchEvent(new CustomEvent("calibration_started", { detail: { url: normalizedImageUrl } }));
+  processAutoCalibrateQueue();
 };
 
 async function processAutoCalibrateQueue() {
@@ -65,21 +63,29 @@ async function processAutoCalibrateQueue() {
       });
 
       if (res.ok) {
-        const data = await res.json();
-        if (data.um_per_pixel && data.scale_detection?.vertices?.length >= 2) {
+        const text = await res.text();
+        const data = text ? JSON.parse(text) : null;
+        if (data && data.um_per_pixel && data.scale_detection?.vertices?.length >= 2) {
           const micrometers = parseFloat(data.ocr?.numero_detectado || "0");
           const pxLen = micrometers > 0 ? micrometers / data.um_per_pixel : 1;
-          const store = readCalibrationMetaStore();
-          store[item.imageUrl] = {
+          const calData = {
             pixelLength: pxLen,
             micrometers: micrometers || 1,
             umByPx: data.um_per_pixel,
+            isAi: true,
           };
+          const store = readCalibrationMetaStore();
+          store[item.imageUrl] = calData;
           writeCalibrationMetaStore(store);
-          window.dispatchEvent(new CustomEvent("calibration_updated", { detail: { url: item.imageUrl, data: store[item.imageUrl] } }));
+          window.dispatchEvent(new CustomEvent("calibration_updated", { detail: { url: item.imageUrl, data: calData } }));
+        } else {
+          window.dispatchEvent(new CustomEvent("calibration_failed", { detail: { url: item.imageUrl } }));
         }
+      } else {
+         window.dispatchEvent(new CustomEvent("calibration_failed", { detail: { url: item.imageUrl } }));
       }
     } catch (err) {
+      window.dispatchEvent(new CustomEvent("calibration_failed", { detail: { url: item.imageUrl } }));
       console.error("Auto calibration error for", item.imageUrl, err);
     }
   }
@@ -839,11 +845,17 @@ function ResponsiveGallery({
   images,
   calibrableByUrl,
   calibratedByUrl,
+  calibratingByUrl,
+  failedCalibrationByUrl,
+  calibrationData,
   onImageClick,
 }: {
   images: { name: string; url: string }[];
   calibrableByUrl: Record<string, boolean>;
   calibratedByUrl: Record<string, boolean>;
+  calibratingByUrl?: Record<string, boolean>;
+  failedCalibrationByUrl?: Record<string, boolean>;
+  calibrationData?: Record<string, CalibrationInfo>;
   onImageClick: (img: { name: string; url: string }) => void;
 }) {
   const count = images.length;
@@ -932,6 +944,8 @@ function ResponsiveGallery({
           (() => {
             const isCalibrable = !!calibrableByUrl[img.url];
             const isCalibrated = isCalibrable && !!calibratedByUrl[img.url];
+            const isCalibrating = !!calibratingByUrl?.[img.url];
+            const isFailed = !!failedCalibrationByUrl?.[img.url];
             return (
               <div
                 key={`${img.url}-${i}`}
@@ -955,8 +969,12 @@ function ResponsiveGallery({
                       left: 8,
                       zIndex: 2,
                       background: isCalibrated
-                        ? "rgba(22, 163, 74, 0.92)"
-                        : "rgba(220, 38, 38, 0.92)",
+                        ? calibrationData?.[img.url]?.isAi
+                          ? "rgba(22, 163, 74, 0.92)" // IA
+                          : "rgba(51, 158, 234, 0.92)" // Manual
+                        : isCalibrating
+                          ? "rgba(232, 163, 23, 0.92)"
+                          : "rgba(220, 38, 38, 0.92)",
                       color: "white",
                       fontSize: "0.66rem",
                       fontWeight: 700,
@@ -970,18 +988,28 @@ function ResponsiveGallery({
                     }}
                     title={
                       isCalibrated
-                        ? "Micrografía calibrada"
-                        : "Micrografía sin calibrar"
+                        ? calibrationData?.[img.url]?.isAi
+                          ? "Calibrada por IA"
+                          : "Calibrada manualmente"
+                        : isCalibrating
+                          ? "Autocalibrando..."
+                          : isFailed
+                            ? "Fallo de autocalibración"
+                            : "Micrografía sin calibrar"
                     }
                   >
                     <span style={{ lineHeight: 0, display: "inline-flex" }}>
                       {isCalibrated ? (
                         <CheckIcon size={11} />
+                      ) : isCalibrating ? (
+                        <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/>
+                      ) : isFailed ? (
+                        <AlertIcon size={11} />
                       ) : (
                         <AlertIcon size={11} />
                       )}
                     </span>
-                    {isCalibrated ? "Calibrada" : "Sin calibrar"}
+                    {isCalibrated ? "Calibrada" : isCalibrating ? "Autocalibrando" : isFailed ? "Fallo IA" : "Sin calibrar"}
                   </div>
                 )}
                 {img.url ? (
@@ -1070,6 +1098,7 @@ interface CalibrationInfo {
   width?: number;
   height?: number;
   umByPx?: number;
+  isAi?: boolean;
 }
 
 interface ToastNotification {
@@ -1228,6 +1257,8 @@ function ImageLightboxCarousel({
   onUpdateMaskData,
   onClose,
   contextInfo,
+  calibratingByUrl,
+  failedCalibrationByUrl,
 }: {
   images: { name: string; url: string }[];
   initialIndex: number;
@@ -1247,6 +1278,8 @@ function ImageLightboxCarousel({
   onGenerateMask: (imageUrl: string) => Promise<void>;
   onUpdateMaskData: (imageUrl: string, newDataUrl: string) => void;
   onClose: () => void;
+  calibratingByUrl?: Record<string, boolean>;
+  failedCalibrationByUrl?: Record<string, boolean>;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [calibrationMode, setCalibrationMode] = useState(false);
@@ -1279,9 +1312,6 @@ function ImageLightboxCarousel({
     "overview" | "calibration" | "measurement" | "mask"
   >("overview");
   const [pixelLength, setPixelLength] = useState(0);
-  const [autoCalibrating, setAutoCalibrating] = useState(false);
-  const [autoCalibrationError, setAutoCalibrationError] = useState(false);
-  const [autoCalibrationDone, setAutoCalibrationDone] = useState(false);
   const [detectedPixelLength, setDetectedPixelLength] = useState(0);
   const [editorLayout, setEditorLayout] = useState({
     imageWidth: 640,
@@ -1444,9 +1474,6 @@ function ImageLightboxCarousel({
     setShowInputModal(false);
     setShowAutoDetectModal(false);
     setIsMaskDrawing(false);
-    setAutoCalibrating(false);
-    setAutoCalibrationError(false);
-    setAutoCalibrationDone(false);
     clearCanvas();
 
     // If the user was using a drawing tool or viewing the mask panel,
@@ -1467,79 +1494,24 @@ function ImageLightboxCarousel({
     }
   }, [activeSidebarTool, currentImageIsCalibrable]);
 
+  const onSaveCalibrationRef = useRef(onSaveCalibration);
   useEffect(() => {
-    const handleCalibrationUpdated = (e: any) => {
-      const { url, data } = e.detail;
-      setCalibrationData((prev) => {
-         const next = { ...prev, [url]: data };
-         writeCalibrationMetaStore(next);
-         return next;
-      });
-    };
-    window.addEventListener("calibration_updated", handleCalibrationUpdated);
-    return () => window.removeEventListener("calibration_updated", handleCalibrationUpdated);
-  }, []);
+    onSaveCalibrationRef.current = onSaveCalibration;
+  }, [onSaveCalibration]);
 
-  useEffect(() => {
-    if (!currentImageIsCalibrable) {
-      setAutoCalibrating(false);
-      setAutoCalibrationError(false);
-      setAutoCalibrationDone(false);
-      return;
-    }
-    if (hasCalibration) return;
+  const isExternallyCalibrating = calibratingByUrl?.[currentImage.url];
+  const isExternallyFailed = failedCalibrationByUrl?.[currentImage.url];
 
-    let isMounted = true;
-    setAutoCalibrating(true);
-    setAutoCalibrationError(false);
-    setAutoCalibrationDone(false);
-
-    const performAutoCalibration = async () => {
-      try {
-        const response = await fetch(currentImage.url);
-        const blob = await response.blob();
-        
-        const fd = new FormData();
-        fd.append("file", blob, "image.jpg");
-        
-        const res = await fetch("https://AlbertiTechnology-materialai.hf.space/escala/", {
-          method: "POST",
-          body: fd,
-        });
-
-        if (!res.ok) throw new Error("Error in auto calibration");
-
-        const data = await res.json();
-        
-        if (data.um_per_pixel && data.scale_detection?.vertices?.length >= 2) {
-          if (isMounted) {
-            const micrometers = parseFloat(data.ocr?.numero_detectado || "0");
-            const pxLen = micrometers > 0 ? micrometers / data.um_per_pixel : 1;
-            
-            onSaveCalibration(currentImage.url, {
-              pixelLength: pxLen,
-              micrometers: micrometers || 1,
-              umByPx: data.um_per_pixel,
-            });
-            setAutoCalibrating(false);
-            setAutoCalibrationDone(true);
-          }
-        } else {
-          throw new Error("Invalid response");
-        }
-      } catch (err) {
-        if (isMounted) {
-          setAutoCalibrating(false);
-          setAutoCalibrationError(true);
-        }
-      }
-    };
-    performAutoCalibration();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [currentIndex, currentImage.url, hasCalibration, currentImageIsCalibrable, onSaveCalibration]);
+  // Derive AI UI state
+  const aiSuccess = hasCalibration && calibrationData[currentImage.url]?.isAi === true;
+  const aiError = isExternallyFailed;
+  const aiProcessing = isExternallyCalibrating;
+  const showAiFx = (aiSuccess || aiError || aiProcessing) && !calibrationMode;
+  let aiFxColor = "#4ade80"; // green
+  if (aiError) aiFxColor = "#f87171"; // red
+  else if (aiProcessing) aiFxColor = "#e8a317"; // yellow
+  
+  const aiStateLabel = aiProcessing ? "Procesando" : aiError ? "Error" : aiSuccess ? "Éxito" : "";
 
   const resetCalibrationState = (goToOverview = false) => {
     setCalibrationMode(false);
@@ -1554,9 +1526,6 @@ function ImageLightboxCarousel({
     setShowConfirmModal(false);
     setShowInputModal(false);
     setShowAutoDetectModal(false);
-    setAutoCalibrating(false);
-    setAutoCalibrationError(false);
-    setAutoCalibrationDone(false);
     setMaskEditTool(null);
     setIsMaskDrawing(false);
     if (goToOverview) {
@@ -2212,8 +2181,37 @@ function ImageLightboxCarousel({
               position: "relative",
               display: "inline-block",
               lineHeight: 0,
+              padding: showAiFx ? 4 : 0,
+              borderRadius: showAiFx ? 12 : 8,
+              overflow: showAiFx ? "hidden" : "visible",
             }}
           >
+            {showAiFx && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                  width: "300vmax",
+                  height: "300vmax",
+                  background: `conic-gradient(transparent, transparent, transparent, ${aiFxColor})`,
+                  animation: "spin-border 2.5s linear infinite",
+                  zIndex: 0,
+                }}
+              />
+            )}
+            {showAiFx && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 4,
+                  background: "rgba(0,0,0,0.92)",
+                  borderRadius: 8,
+                  zIndex: 0,
+                }}
+              />
+            )}
             <img
               ref={imgRef}
               src={currentImage.url}
@@ -2225,6 +2223,8 @@ function ImageLightboxCarousel({
                 borderRadius: 8,
                 maxWidth: imageMaxWidth,
                 maxHeight: imageMaxHeight,
+                position: showAiFx ? "relative" : "static",
+                zIndex: showAiFx ? 1 : "auto",
               }}
             />
             {currentMaskUrl ? (
@@ -2303,67 +2303,7 @@ function ImageLightboxCarousel({
                 }}
               />
             )}
-            {(!hasCalibration || autoCalibrationDone || autoCalibrationError) &&
-              (autoCalibrating || autoCalibrationDone || autoCalibrationError) && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 16,
-                    right: 16,
-                    background: "rgba(16, 36, 63, 0.75)",
-                    backdropFilter: "blur(4px)",
-                    padding: "6px 12px",
-                    borderRadius: "20px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    color: "white",
-                    fontSize: "0.75rem",
-                    fontWeight: 600,
-                    zIndex: 10,
-                  }}
-                >
-                  {autoCalibrating && (
-                    <>
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: "#e8a317",
-                        }}
-                      />
-                      Autocalibrando...
-                    </>
-                  )}
-                  {autoCalibrationDone && (
-                    <>
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: "#4ade80",
-                        }}
-                      />
-                      Imagen autocalibrada mediante inteligencia artificial
-                    </>
-                  )}
-                  {autoCalibrationError && (
-                    <>
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background: "#f87171",
-                        }}
-                      />
-                      No se pudo autocalibrar, debe calibrar manualmente
-                    </>
-                  )}
-                </div>
-              )}
+            {/* Old pill removed */}
             {measurementMode &&
               measurementLabelPos &&
               measurementDistanceUm !== null && (
@@ -2789,6 +2729,119 @@ function ImageLightboxCarousel({
             textAlign: "left",
           }}
         >
+          {hasCalibration && (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: "10px 12px",
+                borderRadius: "10px",
+                background: calibrationData[currentImage.url]?.isAi ? "rgba(74, 222, 128, 0.15)" : "rgba(51, 158, 234, 0.15)",
+                border: `1px solid ${calibrationData[currentImage.url]?.isAi ? "#4ade80" : "#339eea"}`,
+                boxShadow: calibrationData[currentImage.url]?.isAi ? "0 0 12px rgba(74, 222, 128, 0.3)" : "none",
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "0.72rem",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  color: calibrationData[currentImage.url]?.isAi ? "#4ade80" : "#99d1ff",
+                }}
+              >
+                Datos de Calibración {calibrationData[currentImage.url]?.isAi ? "(IA)" : "(Manual)"}
+              </div>
+              <div
+                style={{
+                  fontSize: "0.88rem",
+                  fontWeight: 600,
+                  color: "white",
+                }}
+              >
+                Ratio: {calibrationRatio?.toFixed(4)} µm/px
+              </div>
+            </div>
+          )}
+          {aiProcessing && !calibrationMode && (
+              <div
+                className="ai-shimmer-bg"
+                style={{
+                  marginBottom: 16,
+                  padding: "10px 12px",
+                  borderRadius: "10px",
+                  background: "linear-gradient(90deg, rgba(232, 163, 23, 0.1) 0%, rgba(232, 163, 23, 0.4) 50%, rgba(232, 163, 23, 0.1) 100%)",
+                  border: "1px solid #e8a317",
+                  boxShadow: "0 0 12px rgba(232, 163, 23, 0.3)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                  textAlign: "center",
+                }}
+              >
+                <div
+                style={{
+                  fontSize: "0.72rem",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  color: "#e8a317",
+                }}
+              >
+                Calibración IA
+              </div>
+              <div
+                className="ai-shimmer-text"
+                style={{
+                  "--text-color": "#e8a317",
+                  fontSize: "0.88rem",
+                  fontWeight: 600,
+                } as React.CSSProperties}
+              >
+                Autocalibrando...
+              </div>
+            </div>
+          )}
+          {aiError && !hasCalibration && !calibrationMode && (
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: "10px 12px",
+                  borderRadius: "10px",
+                  background: "rgba(248, 113, 113, 0.15)",
+                  border: "1px solid #f87171",
+                  boxShadow: "0 0 12px rgba(248, 113, 113, 0.3)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                  textAlign: "center",
+                }}
+              >
+                <div
+                style={{
+                  fontSize: "0.72rem",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  color: "#f87171",
+                }}
+              >
+                Calibración IA
+              </div>
+              <div
+                style={{
+                  fontSize: "0.88rem",
+                  fontWeight: 600,
+                  color: "white",
+                }}
+              >
+                Error: Calibrar manualmente
+              </div>
+            </div>
+          )}
           <div
             style={{
               fontSize: "0.76rem",
@@ -2966,13 +3019,6 @@ function ImageLightboxCarousel({
                       <span>
                         Calibración: {calibrationRatio.toFixed(4)} µm/px
                       </span>
-                      {currentCalibration.pixelLength > 0 &&
-                        currentCalibration.micrometers > 0 && (
-                          <span>
-                            {currentCalibration.pixelLength} px ={" "}
-                            {currentCalibration.micrometers} µm
-                          </span>
-                        )}
                     </>
                   )}
                 </div>
@@ -3370,6 +3416,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
   const [dirtyPdfMuestraIds, setDirtyPdfMuestraIds] = useState<Set<string>>(
     new Set(),
   );
+  const [calibratingByUrl, setCalibratingByUrl] = useState<Record<string, boolean>>({});
+  const [failedCalibrationByUrl, setFailedCalibrationByUrl] = useState<Record<string, boolean>>({});
 
   // Derived state for the UI
   const fixImageUrl = useCallback(
@@ -3536,23 +3584,41 @@ export default function FileManager({ onLogout }: FileManagerProps) {
 
       if (hasStoredMeasure) {
         const storedRatio = stored.micrometers / stored.pixelLength;
-        if (Math.abs(storedRatio - ratio) < 0.0001) {
+        const diff1 = Math.abs(storedRatio - ratio);
+        const diff2 = stored.umByPx ? Math.abs(stored.umByPx - ratio) : Infinity;
+        
+        if (diff1 < 0.0001 || diff2 < 0.0001) {
           nextCalibrationData[imageUrl] = {
             pixelLength: stored.pixelLength,
             micrometers: stored.micrometers,
             width: stored.width,
             height: stored.height,
             umByPx: ratio,
+            isAi: stored.isAi === true,
           };
           rememberedMicrometers = stored.micrometers;
           return;
         }
       }
 
+      // Synthesize a generic scale bar that is roughly 100 pixels long
+      const targetMicrometers = 100 * ratio;
+      const niceNumbers = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+      let bestMicrometers = 100;
+      let minDiff = Infinity;
+      for (const n of niceNumbers) {
+        if (Math.abs(n - targetMicrometers) < minDiff) {
+          minDiff = Math.abs(n - targetMicrometers);
+          bestMicrometers = n;
+        }
+      }
+      
+      const storedFallbackIsAi = stored?.isAi === true;
       nextCalibrationData[imageUrl] = {
-        pixelLength: 0,
-        micrometers: 0,
+        pixelLength: bestMicrometers / ratio,
+        micrometers: bestMicrometers,
         umByPx: ratio,
+        isAi: storedFallbackIsAi, // preserve AI flag even if we fallback to generic bar
       };
     });
 
@@ -3561,6 +3627,51 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       setLastMicrometers(rememberedMicrometers);
     }
   }, [apiMicrografias, fixImageUrl]);
+
+  const microInfoByUrlRef = useRef(microInfoByUrl);
+  useEffect(() => { microInfoByUrlRef.current = microInfoByUrl; }, [microInfoByUrl]);
+
+  useEffect(() => {
+    const handleCalibrationStarted = (e: any) => {
+      const { url } = e.detail;
+      setCalibratingByUrl((prev) => ({ ...prev, [url]: true }));
+      setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: false }));
+    };
+    const handleCalibrationUpdated = (e: any) => {
+      const { url, data } = e.detail;
+      setCalibrationData((prev) => ({ ...prev, [url]: data }));
+      setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
+      setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: false }));
+      // Persist um_by_px to backend and update local state
+      const info = microInfoByUrlRef.current[url];
+      if (info?.rawId && data?.umByPx) {
+        const fd = new FormData();
+        fd.append("um_by_px", String(data.umByPx));
+        api.updateMicrografia(info.rawId, fd).then(() => {
+          setApiMicrografias((prev) =>
+            prev.map((m) =>
+              String(m.id) === info.rawId
+                ? { ...m, um_by_px: data.umByPx }
+                : m,
+            ),
+          );
+        }).catch((err) => console.error("Error persisting auto-calibration", err));
+      }
+    };
+    const handleCalibrationFailed = (e: any) => {
+      const { url } = e.detail;
+      setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
+      setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: true }));
+    };
+    window.addEventListener("calibration_started", handleCalibrationStarted);
+    window.addEventListener("calibration_updated", handleCalibrationUpdated);
+    window.addEventListener("calibration_failed", handleCalibrationFailed);
+    return () => {
+      window.removeEventListener("calibration_started", handleCalibrationStarted);
+      window.removeEventListener("calibration_updated", handleCalibrationUpdated);
+      window.removeEventListener("calibration_failed", handleCalibrationFailed);
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -4099,7 +4210,11 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           setUploadProgress({ current: i + 1, total: fds.length });
           try {
             const apiRes = await api.createMicrografia(fds[i]);
-            addMicrografiaToAutoCalibrationQueue(fds[i], apiRes);
+            const rawFile = fds[i].get("imagen");
+            const normalizedUrl = fixImageUrl(apiRes?.imagen);
+            if (rawFile instanceof Blob && normalizedUrl) {
+              addMicrografiaToAutoCalibrationQueue(rawFile, normalizedUrl);
+            }
           } catch (e) {
             errors++;
             const maybeApiError = e as ApiLikeError;
@@ -4133,7 +4248,11 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           await api.createRegion(fd);
         else if (currentCreateModal?.type === "micrografia") {
           const apiRes = await api.createMicrografia(fd);
-          addMicrografiaToAutoCalibrationQueue(fd, apiRes);
+          const rawFile = fd.get("imagen");
+          const normalizedUrl = fixImageUrl(apiRes?.imagen);
+          if (rawFile instanceof Blob && normalizedUrl) {
+            addMicrografiaToAutoCalibrationQueue(rawFile, normalizedUrl);
+          }
         }
       }
       const nextData = await fetchAll();
@@ -4649,6 +4768,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     type,
     isOpen,
     isCalibrated = false,
+    isCalibrating = false,
+    isFailed = false,
     onClick,
   }: {
     id: string;
@@ -4656,6 +4777,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     type: string;
     isOpen?: boolean;
     isCalibrated?: boolean;
+    isCalibrating?: boolean;
+    isFailed?: boolean;
     onClick: () => void;
   }) => {
     const isFolder = type !== "micrografia";
@@ -4703,16 +4826,16 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           </span>
           {type === "micrografia" && (
             <span
-              title={isCalibrated ? "Calibrada" : "Sin calibrar"}
+              title={isCalibrated ? "Calibrada" : isCalibrating ? "Autocalibrando..." : isFailed ? "Fallo IA" : "Sin calibrar"}
               style={{
-                color: isCalibrated ? "#16a34a" : "#dc2626",
+                color: isCalibrated ? "#16a34a" : isCalibrating ? "#e8a317" : isFailed ? "#f87171" : "#dc2626",
                 marginLeft: 4,
                 display: "inline-flex",
                 alignItems: "center",
                 flexShrink: 0,
               }}
             >
-              {isCalibrated ? <CheckIcon /> : <AlertIcon />}
+              {isCalibrated ? <CheckIcon /> : isCalibrating ? <div style={{width:8,height:8,borderRadius:"50%",background:"currentColor",margin:2}}/> : isFailed ? <AlertIcon /> : <AlertIcon />}
             </span>
           )}
         </div>
@@ -4966,6 +5089,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                                   isCalibrated={
                                     !!mic.umByPx && Number(mic.umByPx) > 0
                                   }
+                                  isCalibrating={!!calibratingByUrl[mic.url]}
+                                  isFailed={!!failedCalibrationByUrl[mic.url]}
                                   onClick={() =>
                                     handleClickMicrografia(mic, reg)
                                   }
@@ -5021,6 +5146,9 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               images={galleryImages}
               calibrableByUrl={galleryCalibrableByUrl}
               calibratedByUrl={galleryCalibratedByUrl}
+              calibratingByUrl={calibratingByUrl}
+              failedCalibrationByUrl={failedCalibrationByUrl}
+              calibrationData={calibrationData}
               onImageClick={(img) => {
                 const isSingleMicroFromTree =
                   galleryView.kind === "micrografias" &&
@@ -5474,6 +5602,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             initialIndex={lightboxIndex}
             calibrableByUrl={lightboxCalibrableByUrl}
             calibrationData={calibrationData}
+            calibratingByUrl={calibratingByUrl}
+            failedCalibrationByUrl={failedCalibrationByUrl}
             maskByImageUrl={maskByImageUrl}
             maskLabelsByImageUrl={maskLabelsByImageUrl}
             maskVisibleByImageUrl={maskVisibleByImageUrl}
@@ -5484,6 +5614,12 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               const ratio =
                 data.umByPx || data.micrometers / Math.max(data.pixelLength, 1);
               const microInfo = microInfoByUrl[url];
+
+              const calDataWithAi = { ...data, umByPx: ratio, isAi: false };
+              setCalibrationData((prev) => ({ ...prev, [url]: calDataWithAi }));
+              const store = readCalibrationMetaStore();
+              store[url] = calDataWithAi;
+              writeCalibrationMetaStore(store);
 
               if (microInfo?.rawId) {
                 try {
