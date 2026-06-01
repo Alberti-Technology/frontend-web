@@ -16,7 +16,7 @@ const DRAWINGS_STORAGE_KEY = "draw_cache_v1_by_image_url";
 
 type CalibrationMetaStore = Record<
   string,
-  { pixelLength: number; micrometers: number; width?: number; height?: number; umByPx?: number; }
+  { pixelLength: number; micrometers: number; width?: number; height?: number; umByPx?: number; isAi?: boolean; isFailed?: boolean; }
 >;
 
 function readCalibrationMetaStore(): CalibrationMetaStore {
@@ -943,7 +943,7 @@ function ResponsiveGallery({
         {images.map((img, i) =>
           (() => {
             const isCalibrable = !!calibrableByUrl[img.url];
-            const isCalibrated = isCalibrable && !!calibratedByUrl[img.url];
+            const isCalibrated = isCalibrable && (!!calibratedByUrl[img.url] || (!!calibrationData?.[img.url]?.umByPx && Number(calibrationData?.[img.url]?.umByPx) > 0));
             const isCalibrating = !!calibratingByUrl?.[img.url];
             const isFailed = !!failedCalibrationByUrl?.[img.url];
             return (
@@ -969,12 +969,10 @@ function ResponsiveGallery({
                       left: 8,
                       zIndex: 2,
                       background: isCalibrated
-                        ? calibrationData?.[img.url]?.isAi
-                          ? "rgba(22, 163, 74, 0.92)" // IA
-                          : "rgba(51, 158, 234, 0.92)" // Manual
-                        : isCalibrating
-                          ? "rgba(232, 163, 23, 0.92)"
-                          : "rgba(220, 38, 38, 0.92)",
+                        ? "rgba(22, 163, 74, 0.92)"
+                        : isFailed
+                          ? "rgba(220, 38, 38, 0.92)"
+                          : "rgba(232, 163, 23, 0.92)",
                       color: "white",
                       fontSize: "0.66rem",
                       fontWeight: 700,
@@ -1000,16 +998,29 @@ function ResponsiveGallery({
                   >
                     <span style={{ lineHeight: 0, display: "inline-flex" }}>
                       {isCalibrated ? (
-                        <CheckIcon size={11} />
+                        calibrationData?.[img.url]?.isAi ? (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <CheckIcon size={11} /> IA
+                          </span>
+                        ) : (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <CheckIcon size={11} /> CM
+                          </span>
+                        )
                       ) : isCalibrating ? (
-                        <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> IA
+                        </span>
                       ) : isFailed ? (
-                        <AlertIcon size={11} />
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <AlertIcon size={11} /> IA
+                        </span>
                       ) : (
-                        <AlertIcon size={11} />
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> IA
+                        </span>
                       )}
                     </span>
-                    {isCalibrated ? "Calibrada" : isCalibrating ? "Autocalibrando" : isFailed ? "Fallo IA" : "Sin calibrar"}
                   </div>
                 )}
                 {img.url ? (
@@ -1136,6 +1147,24 @@ const CaliperIcon = () => (
     <rect x="10" y="8" width="6" height="4" rx="0.6" />
   </svg>
 );
+
+const RefreshIcon = ({ size = 20 }: { size?: number }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+  </svg>
+);
+
 const RulerIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -1259,6 +1288,7 @@ function ImageLightboxCarousel({
   contextInfo,
   calibratingByUrl,
   failedCalibrationByUrl,
+  onRetryAutoCalibration,
 }: {
   images: { name: string; url: string }[];
   initialIndex: number;
@@ -1278,6 +1308,7 @@ function ImageLightboxCarousel({
   onGenerateMask: (imageUrl: string) => Promise<void>;
   onUpdateMaskData: (imageUrl: string, newDataUrl: string) => void;
   onClose: () => void;
+  onRetryAutoCalibration?: (imageUrl: string) => void;
   calibratingByUrl?: Record<string, boolean>;
   failedCalibrationByUrl?: Record<string, boolean>;
 }) {
@@ -1383,13 +1414,25 @@ function ImageLightboxCarousel({
     measurementPx > 0 && calibrationRatio
       ? measurementPx * calibrationRatio
       : null;
+  // Derive AI UI state early so we can account for border padding in layout
+  const isExternallyCalibrating = calibratingByUrl?.[currentImage.url];
+  const isExternallyFailed = failedCalibrationByUrl?.[currentImage.url];
+  const aiSuccess = hasCalibration && calibrationData[currentImage.url]?.isAi === true;
+  const aiError = isExternallyFailed;
+  const aiProcessing = isExternallyCalibrating;
+  const showAiFx = (aiSuccess || aiError || aiProcessing) && !calibrationMode;
+  let aiFxColor = "#4ade80"; // green
+  if (aiError) aiFxColor = "#f87171"; // red
+  else if (aiProcessing) aiFxColor = "#e8a317"; // yellow
+
   const LIGHTBOX_SIDE_MIN = 40;
   const MIN_CONTEXT_WIDTH = 280;
+  const borderPad = showAiFx ? 8 : 0;
   const imageMaxWidth = Math.max(
     260,
-    editorLayout.viewportWidth - LIGHTBOX_SIDE_MIN - MIN_CONTEXT_WIDTH,
+    editorLayout.viewportWidth - LIGHTBOX_SIDE_MIN - MIN_CONTEXT_WIDTH - borderPad,
   );
-  const imageMaxHeight = Math.max(220, editorLayout.viewportHeight - 100);
+  const imageMaxHeight = Math.max(220, editorLayout.viewportHeight - 100 - borderPad);
   // Sidebar positions: center each panel in the gap between viewport edge and image edge
   // Clamp sidebar so the 62px pill doesn't clip off-screen (center >= 38px)
   const sidebarCenterX = Math.max(38, editorLayout.imageLeft / 2);
@@ -1499,19 +1542,7 @@ function ImageLightboxCarousel({
     onSaveCalibrationRef.current = onSaveCalibration;
   }, [onSaveCalibration]);
 
-  const isExternallyCalibrating = calibratingByUrl?.[currentImage.url];
-  const isExternallyFailed = failedCalibrationByUrl?.[currentImage.url];
-
-  // Derive AI UI state
-  const aiSuccess = hasCalibration && calibrationData[currentImage.url]?.isAi === true;
-  const aiError = isExternallyFailed;
-  const aiProcessing = isExternallyCalibrating;
-  const showAiFx = (aiSuccess || aiError || aiProcessing) && !calibrationMode;
-  let aiFxColor = "#4ade80"; // green
-  if (aiError) aiFxColor = "#f87171"; // red
-  else if (aiProcessing) aiFxColor = "#e8a317"; // yellow
-  
-  const aiStateLabel = aiProcessing ? "Procesando" : aiError ? "Error" : aiSuccess ? "Éxito" : "";
+  // AI state variables are now derived earlier (before imageMaxWidth/imageMaxHeight)
 
   const resetCalibrationState = (goToOverview = false) => {
     setCalibrationMode(false);
@@ -2167,9 +2198,9 @@ function ImageLightboxCarousel({
         <div
           ref={imageContainerRef}
           style={{
-            maxWidth: imageMaxWidth,
-            maxHeight: imageMaxHeight,
-            overflow: "hidden",
+            maxWidth: imageMaxWidth + borderPad,
+            maxHeight: imageMaxHeight + borderPad,
+            overflow: "visible",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -2177,30 +2208,21 @@ function ImageLightboxCarousel({
           }}
         >
           <div
+            className={(aiProcessing && !calibrationMode) ? "ai-snake-border" : undefined}
             style={{
               position: "relative",
               display: "inline-block",
               lineHeight: 0,
               padding: showAiFx ? 4 : 0,
               borderRadius: showAiFx ? 12 : 8,
-              overflow: showAiFx ? "hidden" : "visible",
+              overflow: "hidden",
+              background: showAiFx
+                ? (aiProcessing && !calibrationMode)
+                  ? `conic-gradient(from var(--border-angle), transparent 60%, ${aiFxColor} 100%)`
+                  : aiFxColor
+                : "transparent",
             }}
           >
-            {showAiFx && (
-              <div
-                style={{
-                  position: "absolute",
-                  top: "50%",
-                  left: "50%",
-                  transform: "translate(-50%, -50%)",
-                  width: "300vmax",
-                  height: "300vmax",
-                  background: `conic-gradient(transparent, transparent, transparent, ${aiFxColor})`,
-                  animation: "spin-border 2.5s linear infinite",
-                  zIndex: 0,
-                }}
-              />
-            )}
             {showAiFx && (
               <div
                 style={{
@@ -2405,6 +2427,41 @@ function ImageLightboxCarousel({
                 }}
               >
                 <CaliperIcon />
+              </button>
+              <button
+                title="Reintentar autocalibración"
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "50%",
+                  border: "none",
+                  background: !!calibratingByUrl?.[currentImage.url]
+                      ? "rgba(51,158,234,0.88)"
+                      : "rgba(0,0,0,0.56)",
+                  color: "white",
+                  cursor: !!calibratingByUrl?.[currentImage.url] ? "wait" : "pointer",
+                  lineHeight: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "background 0.15s, transform 0.15s",
+                  opacity: !!calibratingByUrl?.[currentImage.url] ? 0.65 : 1,
+                }}
+                disabled={!!calibratingByUrl?.[currentImage.url] || !onRetryAutoCalibration}
+                onClick={() => {
+                  if (!currentImage?.url || !!calibratingByUrl?.[currentImage.url] || !onRetryAutoCalibration) return;
+                  onRetryAutoCalibration(currentImage.url);
+                }}
+                onMouseOver={(e) => {
+                  if (!!calibratingByUrl?.[currentImage.url]) return;
+                  e.currentTarget.style.background = "rgba(51,158,234,0.78)";
+                }}
+                onMouseOut={(e) => {
+                  if (!!calibratingByUrl?.[currentImage.url]) return;
+                  e.currentTarget.style.background = "rgba(0,0,0,0.56)";
+                }}
+              >
+                <RefreshIcon />
               </button>
               <button
                 title={
@@ -2729,116 +2786,76 @@ function ImageLightboxCarousel({
             textAlign: "left",
           }}
         >
-          {hasCalibration && (
+          {aiSuccess && !calibrationMode && (
             <div
               style={{
                 marginBottom: 16,
                 padding: "10px 12px",
                 borderRadius: "10px",
-                background: calibrationData[currentImage.url]?.isAi ? "rgba(74, 222, 128, 0.15)" : "rgba(51, 158, 234, 0.15)",
-                border: `1px solid ${calibrationData[currentImage.url]?.isAi ? "#4ade80" : "#339eea"}`,
-                boxShadow: calibrationData[currentImage.url]?.isAi ? "0 0 12px rgba(74, 222, 128, 0.3)" : "none",
+                background: "rgba(74, 222, 128, 0.15)",
+                border: "1px solid #4ade80",
+                boxShadow: "0 0 12px rgba(74, 222, 128, 0.3)",
                 display: "flex",
                 flexDirection: "column",
                 gap: 4,
                 textAlign: "center",
               }}
             >
-              <div
-                style={{
-                  fontSize: "0.72rem",
-                  fontWeight: 800,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  color: calibrationData[currentImage.url]?.isAi ? "#4ade80" : "#99d1ff",
-                }}
-              >
-                Datos de Calibración {calibrationData[currentImage.url]?.isAi ? "(IA)" : "(Manual)"}
+              <div style={{ fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#4ade80" }}>
+                Autocalibración con Inteligencia Artificial
               </div>
-              <div
-                style={{
-                  fontSize: "0.88rem",
-                  fontWeight: 600,
-                  color: "white",
-                }}
-              >
-                Ratio: {calibrationRatio?.toFixed(4)} µm/px
+              <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "white" }}>
+                Autocalibración exitosa
               </div>
             </div>
           )}
           {aiProcessing && !calibrationMode && (
-              <div
-                className="ai-shimmer-bg"
-                style={{
-                  marginBottom: 16,
-                  padding: "10px 12px",
-                  borderRadius: "10px",
-                  background: "linear-gradient(90deg, rgba(232, 163, 23, 0.1) 0%, rgba(232, 163, 23, 0.4) 50%, rgba(232, 163, 23, 0.1) 100%)",
-                  border: "1px solid #e8a317",
-                  boxShadow: "0 0 12px rgba(232, 163, 23, 0.3)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
-                  textAlign: "center",
-                }}
-              >
-                <div
-                style={{
-                  fontSize: "0.72rem",
-                  fontWeight: 800,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  color: "#e8a317",
-                }}
-              >
-                Calibración IA
+            <div
+              className="ai-shimmer-bg"
+              style={{
+                marginBottom: 16,
+                padding: "10px 12px",
+                borderRadius: "10px",
+                background: "linear-gradient(90deg, rgba(232, 163, 23, 0.1) 0%, rgba(232, 163, 23, 0.4) 50%, rgba(232, 163, 23, 0.1) 100%)",
+                border: "1px solid #e8a317",
+                boxShadow: "0 0 12px rgba(232, 163, 23, 0.3)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#e8a317" }}>
+                Autocalibración con Inteligencia Artificial
               </div>
               <div
                 className="ai-shimmer-text"
-                style={{
-                  "--text-color": "#e8a317",
-                  fontSize: "0.88rem",
-                  fontWeight: 600,
-                } as React.CSSProperties}
+                style={{ background: "linear-gradient(90deg, #e8a317 0%, #fff 50%, #e8a317 100%)", fontSize: "0.88rem", fontWeight: 600 } as React.CSSProperties}
               >
                 Autocalibrando...
               </div>
             </div>
           )}
           {aiError && !hasCalibration && !calibrationMode && (
-              <div
-                style={{
-                  marginBottom: 16,
-                  padding: "10px 12px",
-                  borderRadius: "10px",
-                  background: "rgba(248, 113, 113, 0.15)",
-                  border: "1px solid #f87171",
-                  boxShadow: "0 0 12px rgba(248, 113, 113, 0.3)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
-                  textAlign: "center",
-                }}
-              >
-                <div
-                style={{
-                  fontSize: "0.72rem",
-                  fontWeight: 800,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  color: "#f87171",
-                }}
-              >
-                Calibración IA
+            <div
+              style={{
+                marginBottom: 16,
+                padding: "10px 12px",
+                borderRadius: "10px",
+                background: "rgba(248, 113, 113, 0.15)",
+                border: "1px solid #f87171",
+                boxShadow: "0 0 12px rgba(248, 113, 113, 0.3)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#f87171" }}>
+                Autocalibración con Inteligencia Artificial
               </div>
-              <div
-                style={{
-                  fontSize: "0.88rem",
-                  fontWeight: 600,
-                  color: "white",
-                }}
-              >
-                Error: Calibrar manualmente
+              <div style={{ fontSize: "0.88rem", fontWeight: 600, color: "white" }}>
+                Error al autocalibrar. Calibrar manualmente
               </div>
             </div>
           )}
@@ -2886,29 +2903,7 @@ function ImageLightboxCarousel({
               )}
             </div>
           )}
-          {hasCalibration && currentCalibration && (
-            <div
-              style={{
-                fontSize: "0.78rem",
-                fontWeight: 600,
-                lineHeight: 1.4,
-                marginTop: 8,
-                padding: "4px 8px",
-                background: "rgba(51, 158, 234, 0.15)",
-                borderLeft: "3px solid #339eea",
-                borderRadius: "0 4px 4px 0",
-                display: "flex",
-                flexDirection: "column",
-                gap: 2,
-              }}
-            >
-              <div style={{ color: "#99d1ff", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Datos de calibración</div>
-              <div>{currentCalibration.micrometers} µm = {Math.round(currentCalibration.pixelLength)} px</div>
-              {currentCalibration.umByPx && (
-                <div style={{ color: "#eef8ff" }}>Ratio: {(currentCalibration.umByPx).toFixed(4)} µm/px</div>
-              )}
-            </div>
-          )}
+
         </div>
 
         {/* ---- MAIN (50%) ---- */}
@@ -3564,6 +3559,19 @@ export default function FileManager({ onLogout }: FileManagerProps) {
 
   useEffect(() => {
     const storedMeta = readCalibrationMetaStore();
+    const nextFailed: Record<string, boolean> = {};
+    Object.entries(storedMeta).forEach(([key, val]) => {
+      if (val.isFailed) {
+         nextFailed[key] = true;
+      }
+    });
+    if (Object.keys(nextFailed).length > 0) {
+      setFailedCalibrationByUrl((prev) => ({ ...prev, ...nextFailed }));
+    }
+  }, []);
+
+  useEffect(() => {
+    const storedMeta = readCalibrationMetaStore();
     const nextCalibrationData: Record<string, CalibrationInfo> = {};
     let rememberedMicrometers = 0;
 
@@ -3578,7 +3586,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       if (!imageUrl) return;
 
       const rawId = String(mic.id);
-      const stored = storedMeta[rawId];
+      // Check both rawId and imageUrl keys since auto-calibration writes by URL
+      const stored = storedMeta[rawId] || storedMeta[imageUrl];
       const hasStoredMeasure =
         !!stored && stored.pixelLength > 0 && stored.micrometers > 0;
 
@@ -3601,6 +3610,10 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         }
       }
 
+      // Even if the stored measurement doesn't match the ratio,
+      // check if the stored entry has isAi flag (ratio came from HF)
+      const storedFallbackIsAi = stored?.isAi === true;
+
       // Synthesize a generic scale bar that is roughly 100 pixels long
       const targetMicrometers = 100 * ratio;
       const niceNumbers = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
@@ -3613,12 +3626,11 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         }
       }
       
-      const storedFallbackIsAi = stored?.isAi === true;
       nextCalibrationData[imageUrl] = {
         pixelLength: bestMicrometers / ratio,
         micrometers: bestMicrometers,
         umByPx: ratio,
-        isAi: storedFallbackIsAi, // preserve AI flag even if we fallback to generic bar
+        isAi: storedFallbackIsAi,
       };
     });
 
@@ -3639,15 +3651,28 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     };
     const handleCalibrationUpdated = (e: any) => {
       const { url, data } = e.detail;
+      const store = readCalibrationMetaStore();
+      const existing = store[url];
+      const info = microInfoByUrlRef.current[url];
+      const existingRaw = info?.rawId ? store[info.rawId] : null;
+      
+      if ((existing && existing.isAi === false) || (existingRaw && existingRaw.isAi === false)) {
+         setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
+         return;
+      }
+      
       setCalibrationData((prev) => ({ ...prev, [url]: data }));
       setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
       setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: false }));
       // Persist um_by_px to backend and update local state
-      const info = microInfoByUrlRef.current[url];
       if (info?.rawId && data?.umByPx) {
         const fd = new FormData();
         fd.append("um_by_px", String(data.umByPx));
         api.updateMicrografia(info.rawId, fd).then(() => {
+          // Also write to localStorage with rawId key so the sync effect finds it
+          const store2 = readCalibrationMetaStore();
+          store2[info.rawId] = { ...data };
+          writeCalibrationMetaStore(store2);
           setApiMicrografias((prev) =>
             prev.map((m) =>
               String(m.id) === info.rawId
@@ -3660,8 +3685,20 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     };
     const handleCalibrationFailed = (e: any) => {
       const { url } = e.detail;
+      const store = readCalibrationMetaStore();
+      const existing = store[url];
+      const info = microInfoByUrlRef.current[url];
+      const existingRaw = info?.rawId ? store[info.rawId] : null;
+      
+      if ((existing && existing.isAi === false) || (existingRaw && existingRaw.isAi === false)) {
+         setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
+         return;
+      }
+
       setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
       setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: true }));
+      store[url] = { ...(store[url] || { pixelLength: 1, micrometers: 1 }), isFailed: true, isAi: true };
+      writeCalibrationMetaStore(store);
     };
     window.addEventListener("calibration_started", handleCalibrationStarted);
     window.addEventListener("calibration_updated", handleCalibrationUpdated);
@@ -4770,6 +4807,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     isCalibrated = false,
     isCalibrating = false,
     isFailed = false,
+    isAi = false,
     onClick,
   }: {
     id: string;
@@ -4779,6 +4817,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     isCalibrated?: boolean;
     isCalibrating?: boolean;
     isFailed?: boolean;
+    isAi?: boolean;
     onClick: () => void;
   }) => {
     const isFolder = type !== "micrografia";
@@ -4828,14 +4867,25 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             <span
               title={isCalibrated ? "Calibrada" : isCalibrating ? "Autocalibrando..." : isFailed ? "Fallo IA" : "Sin calibrar"}
               style={{
-                color: isCalibrated ? "#16a34a" : isCalibrating ? "#e8a317" : isFailed ? "#f87171" : "#dc2626",
                 marginLeft: 4,
                 display: "inline-flex",
                 alignItems: "center",
                 flexShrink: 0,
               }}
             >
-              {isCalibrated ? <CheckIcon /> : isCalibrating ? <div style={{width:8,height:8,borderRadius:"50%",background:"currentColor",margin:2}}/> : isFailed ? <AlertIcon /> : <AlertIcon />}
+              {isCalibrated ? (
+                isAi ? (
+                  <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 4px", borderRadius: 4, background: "rgba(22,163,74,0.15)", border: "1px solid #16a34a", color: "#16a34a", lineHeight: 1 }}>IA</span>
+                ) : (
+                  <span style={{ color: "#16a34a" }}><CheckIcon /></span>
+                )
+              ) : isCalibrating ? (
+                <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 4px", borderRadius: 4, background: "rgba(232,163,23,0.15)", border: "1px solid #e8a317", color: "#e8a317", lineHeight: 1 }}>IA</span>
+              ) : isFailed ? (
+                <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 4px", borderRadius: 4, background: "rgba(248,113,113,0.15)", border: "1px solid #f87171", color: "#f87171", lineHeight: 1 }}>IA</span>
+              ) : (
+                <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 4px", borderRadius: 4, background: "rgba(232,163,23,0.15)", border: "1px solid #e8a317", color: "#e8a317", lineHeight: 1 }}>IA</span>
+              )}
             </span>
           )}
         </div>
@@ -5087,10 +5137,12 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                                   name={mic.name}
                                   type="micrografia"
                                   isCalibrated={
-                                    !!mic.umByPx && Number(mic.umByPx) > 0
+                                    (!!mic.umByPx && Number(mic.umByPx) > 0) ||
+                                    (!!calibrationData[mic.url]?.umByPx && Number(calibrationData[mic.url]?.umByPx) > 0)
                                   }
                                   isCalibrating={!!calibratingByUrl[mic.url]}
                                   isFailed={!!failedCalibrationByUrl[mic.url]}
+                                  isAi={!!calibrationData[mic.url]?.isAi}
                                   onClick={() =>
                                     handleClickMicrografia(mic, reg)
                                   }
@@ -5610,6 +5662,19 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             maskLoadingByImageUrl={maskLoadingByImageUrl}
             lastMicrometers={lastMicrometers}
             contextInfo={lightboxContextInfo}
+            onRetryAutoCalibration={async (url) => {
+              try {
+                setCalibratingByUrl((prev) => ({ ...prev, [url]: true }));
+                setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: false }));
+                const response = await fetch(url);
+                const blob = await response.blob();
+                addMicrografiaToAutoCalibrationQueue(blob, url);
+              } catch (e) {
+                console.error("Failed to retry auto calibration", e);
+                setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
+                setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: true }));
+              }
+            }}
             onSaveCalibration={async (url, data) => {
               const ratio =
                 data.umByPx || data.micrometers / Math.max(data.pixelLength, 1);
@@ -5617,6 +5682,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
 
               const calDataWithAi = { ...data, umByPx: ratio, isAi: false };
               setCalibrationData((prev) => ({ ...prev, [url]: calDataWithAi }));
+              setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
+              setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: false }));
               const store = readCalibrationMetaStore();
               store[url] = calDataWithAi;
               writeCalibrationMetaStore(store);
@@ -5655,6 +5722,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                   micrometers: data.micrometers,
                   width: data.width,
                   height: data.height,
+                  isAi: false,
                 };
                 writeCalibrationMetaStore(store);
               }

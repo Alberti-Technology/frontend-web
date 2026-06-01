@@ -7,6 +7,7 @@ interface SidebarProps {
 
 export default function Sidebar({ onLogoutConfirm }: SidebarProps) {
   const [showLogoutModal, setShowLogoutModal] = useState(false)
+  const [showLegendModal, setShowLegendModal] = useState(false)
 
   return (
     <>
@@ -23,6 +24,41 @@ export default function Sidebar({ onLogoutConfirm }: SidebarProps) {
         >
           <img src={altechLogo} alt="Alberti Technology" style={{ width: '60%', height: 'auto', minWidth: '16px' }} />
         </a>
+
+        {/* Middle: Info/Legend Button */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <button 
+            onClick={() => setShowLegendModal(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              background: 'transparent',
+              color: '#339eea',
+              border: 'none',
+              transition: 'all 0.2s ease',
+              cursor: 'pointer',
+            }}
+            title="Leyenda de iconos"
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#eef8ff';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.transform = 'none';
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+          </button>
+        </div>
 
         {/* Bottom: Logout Button */}
         <button 
@@ -82,6 +118,97 @@ export default function Sidebar({ onLogoutConfirm }: SidebarProps) {
                 onMouseLeave={(e) => Object.assign(e.currentTarget.style, { opacity: 1 })}
               >
                 Cerrar sesión
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Legend Modal */}
+      {showLegendModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowLegendModal(false)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h3 style={styles.modalTitle}>Leyenda de Íconos</h3>
+              <button 
+                style={styles.closeBtn} 
+                onClick={() => setShowLegendModal(false)}
+                onMouseEnter={(e) => Object.assign(e.currentTarget.style, { background: 'var(--bg-accent)' })}
+                onMouseLeave={(e) => Object.assign(e.currentTarget.style, { background: 'transparent' })}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div style={{ ...styles.modalBody, padding: '20px 28px', maxHeight: '60vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div>
+                  <h4 style={{ margin: '0 0 12px 0', color: '#10243f', fontSize: '0.95rem', fontWeight: 700 }}>Árbol de Archivos</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(22,163,74,0.15)', border: '1px solid #16a34a', color: '#16a34a', lineHeight: 1 }}>IA</span>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibración exitosa</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(232,163,23,0.15)', border: '1px solid #e8a317', color: '#e8a317', lineHeight: 1 }}>IA</span>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibrando (o en cola)</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(248,113,113,0.15)', border: '1px solid #f87171', color: '#f87171', lineHeight: 1 }}>IA</span>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Error en autocalibración</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ color: '#16a34a', padding: '2px 4px', display: 'flex' }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      </span>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Calibración Manual exitosa</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
+                
+                <div>
+                  <h4 style={{ margin: '0 0 12px 0', color: '#10243f', fontSize: '0.95rem', fontWeight: 700 }}>Galería</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ background: 'rgba(22, 163, 74, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> IA
+                      </div>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibración exitosa</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ background: 'rgba(232, 163, 23, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> IA
+                      </div>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibrando (o en cola)</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ background: 'rgba(220, 38, 38, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> IA
+                      </div>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Error en autocalibración</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ background: 'rgba(22, 163, 74, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> CM
+                      </div>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Calibración Manual exitosa</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div style={styles.modalActions}>
+              <button 
+                style={styles.btnPrimary} 
+                onClick={() => setShowLegendModal(false)}
+                onMouseEnter={(e) => Object.assign(e.currentTarget.style, { opacity: 0.92 })}
+                onMouseLeave={(e) => Object.assign(e.currentTarget.style, { opacity: 1 })}
+              >
+                Cerrar
               </button>
             </div>
           </div>

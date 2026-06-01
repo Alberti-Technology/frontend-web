@@ -72,9 +72,18 @@ button {
   }
 }
 
+@property --border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
 @keyframes spin-border {
-  0% { transform: translate(-50%, -50%) rotate(0deg); }
-  100% { transform: translate(-50%, -50%) rotate(360deg); }
+  to { --border-angle: 360deg; }
+}
+
+.ai-snake-border {
+  animation: spin-border 2.5s linear infinite;
 }
 
 @keyframes ai-shimmer {
