@@ -9,30 +9,9 @@ import { createPortal } from "react-dom";
 import * as api from "../services/api";
 import { CLOUDINARY_BASE_URL } from "../config/apiConfig";
 
-const CALIBRATION_META_STORAGE_KEY = "calibration_meta_by_micro_id";
 const MASK_STORAGE_KEY = "mask_cache_v2_by_micro_id";
 const MASK_LABELS_STORAGE_KEY = "mask_labels_by_micro_id";
 const DRAWINGS_STORAGE_KEY = "draw_cache_v1_by_image_url";
-
-type CalibrationMetaStore = Record<
-  string,
-  { pixelLength: number; micrometers: number; width?: number; height?: number; umByPx?: number; isAi?: boolean; isFailed?: boolean; }
->;
-
-function readCalibrationMetaStore(): CalibrationMetaStore {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem(CALIBRATION_META_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as CalibrationMetaStore) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeCalibrationMetaStore(store: CalibrationMetaStore) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(CALIBRATION_META_STORAGE_KEY, JSON.stringify(store));
-}
 
 const autoCalibrateQueue: Array<{ fd: FormData; imageUrl: string }> = [];
 let isProcessingCalibrationQueue = false;
@@ -74,9 +53,6 @@ async function processAutoCalibrateQueue() {
             umByPx: data.um_per_pixel,
             isAi: true,
           };
-          const store = readCalibrationMetaStore();
-          store[item.imageUrl] = calData;
-          writeCalibrationMetaStore(store);
           window.dispatchEvent(new CustomEvent("calibration_updated", { detail: { url: item.imageUrl, data: calData } }));
         } else {
           window.dispatchEvent(new CustomEvent("calibration_failed", { detail: { url: item.imageUrl } }));
@@ -281,6 +257,9 @@ export interface ApiMicrografia {
   imagen: string;
   region: number;
   um_by_px?: number;
+  is_ai?: boolean;
+  pixel_length?: number;
+  micrometers?: number;
 }
 
 // ==========================================
@@ -1420,7 +1399,7 @@ function ImageLightboxCarousel({
   const aiSuccess = hasCalibration && calibrationData[currentImage.url]?.isAi === true;
   const aiError = isExternallyFailed;
   const aiProcessing = isExternallyCalibrating;
-  const showAiFx = (aiSuccess || aiError || aiProcessing) && !calibrationMode;
+  const showAiFx = (aiSuccess || aiError || aiProcessing) && !calibrationMode && !measurementMode && !isDrawingToolActive;
   let aiFxColor = "#4ade80"; // green
   if (aiError) aiFxColor = "#f87171"; // red
   else if (aiProcessing) aiFxColor = "#e8a317"; // yellow
@@ -1777,6 +1756,11 @@ function ImageLightboxCarousel({
 
   const handleActivateCalibration = () => {
     if (!currentImageIsCalibrable) return;
+    if (activeSidebarTool === "calibration") {
+      setActiveSidebarTool("overview");
+      resetCalibrationState(false);
+      return;
+    }
     resetCalibrationState(false);
     setActiveSidebarTool("calibration");
 
@@ -2980,6 +2964,11 @@ function ImageLightboxCarousel({
                       <span>
                         Calibración: {calibrationRatio?.toFixed(4)} µm/px
                       </span>
+                      {currentCalibration?.pixelLength > 0 && currentCalibration?.micrometers > 0 && (
+                        <span>
+                          Medida base: {currentCalibration.micrometers} µm en {currentCalibration.pixelLength.toFixed(1)} px
+                        </span>
+                      )}
                       {measurementDistanceUm ? (
                         <span>
                           Medición actual: {measurementDistanceUm.toFixed(2)} µm
@@ -3106,14 +3095,35 @@ function ImageLightboxCarousel({
           <div>
             Imagen {currentIndex + 1} de {images.length}
           </div>
-          <div>
-            {!currentImageIsCalibrable
-              ? "Imagen no calibrable"
-              : calibrationMode
-                ? "Marcá la escala con una línea"
-                : hasCalibration
-                  ? calibrationRatio ? `Calibrada: ${calibrationRatio.toFixed(4)} µm/px` : "Micrografía calibrada"
-                  : "Micrografía calibrable"}
+          <div
+            style={{
+              marginTop: 6,
+              padding: "10px 12px",
+              borderRadius: "10px",
+              background: "rgba(51, 158, 234, 0.15)",
+              border: "1px solid #339eea",
+              boxShadow: "0 0 12px rgba(51, 158, 234, 0.3)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+            }}
+          >
+            <div style={{ fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#339eea", textAlign: "center", marginBottom: 4 }}>
+              Información de calibración
+            </div>
+            
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem" }}>
+              <span style={{ color: "rgba(255,255,255,0.7)" }}>Micrómetros:</span>
+              <span style={{ fontWeight: 600 }}>{hasCalibration && currentCalibration?.micrometers ? currentCalibration.micrometers : "-"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem" }}>
+              <span style={{ color: "rgba(255,255,255,0.7)" }}>Píxeles:</span>
+              <span style={{ fontWeight: 600 }}>{hasCalibration && currentCalibration?.pixelLength ? currentCalibration.pixelLength.toFixed(1) : "-"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem" }}>
+              <span style={{ color: "rgba(255,255,255,0.7)" }}>Ratio:</span>
+              <span style={{ fontWeight: 600 }}>{calibrationRatio ? `${calibrationRatio.toFixed(4)} µm/px` : "-"}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -3558,80 +3568,24 @@ export default function FileManager({ onLogout }: FileManagerProps) {
   }, [fetchAll, token]);
 
   useEffect(() => {
-    const storedMeta = readCalibrationMetaStore();
-    const nextFailed: Record<string, boolean> = {};
-    Object.entries(storedMeta).forEach(([key, val]) => {
-      if (val.isFailed) {
-         nextFailed[key] = true;
-      }
-    });
-    if (Object.keys(nextFailed).length > 0) {
-      setFailedCalibrationByUrl((prev) => ({ ...prev, ...nextFailed }));
-    }
-  }, []);
-
-  useEffect(() => {
-    const storedMeta = readCalibrationMetaStore();
     const nextCalibrationData: Record<string, CalibrationInfo> = {};
     let rememberedMicrometers = 0;
 
     apiMicrografias.forEach((mic) => {
-      const ratio =
-        mic.um_by_px !== undefined && mic.um_by_px !== null
-          ? Number(mic.um_by_px)
-          : null;
-      if (!ratio || !Number.isFinite(ratio) || ratio <= 0) return;
-
-      const imageUrl = fixImageUrl(mic.imagen);
-      if (!imageUrl) return;
-
-      const rawId = String(mic.id);
-      // Check both rawId and imageUrl keys since auto-calibration writes by URL
-      const stored = storedMeta[rawId] || storedMeta[imageUrl];
-      const hasStoredMeasure =
-        !!stored && stored.pixelLength > 0 && stored.micrometers > 0;
-
-      if (hasStoredMeasure) {
-        const storedRatio = stored.micrometers / stored.pixelLength;
-        const diff1 = Math.abs(storedRatio - ratio);
-        const diff2 = stored.umByPx ? Math.abs(stored.umByPx - ratio) : Infinity;
-        
-        if (diff1 < 0.0001 || diff2 < 0.0001) {
+      if (mic.um_by_px && mic.um_by_px > 0) {
+        const imageUrl = fixImageUrl(mic.imagen);
+        if (imageUrl) {
           nextCalibrationData[imageUrl] = {
-            pixelLength: stored.pixelLength,
-            micrometers: stored.micrometers,
-            width: stored.width,
-            height: stored.height,
-            umByPx: ratio,
-            isAi: stored.isAi === true,
+            umByPx: Number(mic.um_by_px),
+            isAi: !!mic.is_ai,
+            pixelLength: mic.pixel_length ? Number(mic.pixel_length) : 0,
+            micrometers: mic.micrometers ? Number(mic.micrometers) : 0,
           };
-          rememberedMicrometers = stored.micrometers;
-          return;
+          if (mic.micrometers && mic.micrometers > 0) {
+            rememberedMicrometers = Number(mic.micrometers);
+          }
         }
       }
-
-      // Even if the stored measurement doesn't match the ratio,
-      // check if the stored entry has isAi flag (ratio came from HF)
-      const storedFallbackIsAi = stored?.isAi === true;
-
-      // Synthesize a generic scale bar that is roughly 100 pixels long
-      const targetMicrometers = 100 * ratio;
-      const niceNumbers = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
-      let bestMicrometers = 100;
-      let minDiff = Infinity;
-      for (const n of niceNumbers) {
-        if (Math.abs(n - targetMicrometers) < minDiff) {
-          minDiff = Math.abs(n - targetMicrometers);
-          bestMicrometers = n;
-        }
-      }
-      
-      nextCalibrationData[imageUrl] = {
-        pixelLength: bestMicrometers / ratio,
-        micrometers: bestMicrometers,
-        umByPx: ratio,
-        isAi: storedFallbackIsAi,
-      };
     });
 
     setCalibrationData(nextCalibrationData);
@@ -3651,12 +3605,10 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     };
     const handleCalibrationUpdated = (e: any) => {
       const { url, data } = e.detail;
-      const store = readCalibrationMetaStore();
-      const existing = store[url];
       const info = microInfoByUrlRef.current[url];
-      const existingRaw = info?.rawId ? store[info.rawId] : null;
       
-      if ((existing && existing.isAi === false) || (existingRaw && existingRaw.isAi === false)) {
+      const existing = calibrationDataRef.current[url];
+      if (existing && existing.isAi === false) {
          setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
          return;
       }
@@ -3664,19 +3616,19 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       setCalibrationData((prev) => ({ ...prev, [url]: data }));
       setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
       setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: false }));
-      // Persist um_by_px to backend and update local state
+      // Persist to backend and update local state
       if (info?.rawId && data?.umByPx) {
         const fd = new FormData();
         fd.append("um_by_px", String(data.umByPx));
+        fd.append("is_ai", "true");
+        if (data.pixelLength) fd.append("pixel_length", String(data.pixelLength));
+        if (data.micrometers) fd.append("micrometers", String(data.micrometers));
+
         api.updateMicrografia(info.rawId, fd).then(() => {
-          // Also write to localStorage with rawId key so the sync effect finds it
-          const store2 = readCalibrationMetaStore();
-          store2[info.rawId] = { ...data };
-          writeCalibrationMetaStore(store2);
           setApiMicrografias((prev) =>
             prev.map((m) =>
               String(m.id) === info.rawId
-                ? { ...m, um_by_px: data.umByPx }
+                ? { ...m, um_by_px: data.umByPx, is_ai: true, pixel_length: data.pixelLength, micrometers: data.micrometers }
                 : m,
             ),
           );
@@ -3685,20 +3637,15 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     };
     const handleCalibrationFailed = (e: any) => {
       const { url } = e.detail;
-      const store = readCalibrationMetaStore();
-      const existing = store[url];
-      const info = microInfoByUrlRef.current[url];
-      const existingRaw = info?.rawId ? store[info.rawId] : null;
       
-      if ((existing && existing.isAi === false) || (existingRaw && existingRaw.isAi === false)) {
+      const existing = calibrationDataRef.current[url];
+      if (existing && existing.isAi === false) {
          setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
          return;
       }
 
       setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
       setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: true }));
-      store[url] = { ...(store[url] || { pixelLength: 1, micrometers: 1 }), isFailed: true, isAi: true };
-      writeCalibrationMetaStore(store);
     };
     window.addEventListener("calibration_started", handleCalibrationStarted);
     window.addEventListener("calibration_updated", handleCalibrationUpdated);
@@ -3798,6 +3745,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
   const [calibrationData, setCalibrationData] = useState<
     Record<string, CalibrationInfo>
   >({});
+  const calibrationDataRef = useRef(calibrationData);
+  useEffect(() => { calibrationDataRef.current = calibrationData; }, [calibrationData]);
   const [lastMicrometers, setLastMicrometers] = useState<number>(100);
   const [toastNotifications, setToastNotifications] = useState<
     ToastNotification[]
@@ -5684,19 +5633,20 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               setCalibrationData((prev) => ({ ...prev, [url]: calDataWithAi }));
               setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
               setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: false }));
-              const store = readCalibrationMetaStore();
-              store[url] = calDataWithAi;
-              writeCalibrationMetaStore(store);
 
               if (microInfo?.rawId) {
                 try {
                   const fd = new FormData();
                   fd.append("um_by_px", String(ratio));
+                  fd.append("is_ai", "false");
+                  if (data.pixelLength) fd.append("pixel_length", String(data.pixelLength));
+                  if (data.micrometers) fd.append("micrometers", String(data.micrometers));
+
                   await api.updateMicrografia(microInfo.rawId, fd);
                   setApiMicrografias((prev) =>
                     prev.map((m) =>
                       String(m.id) === microInfo.rawId
-                        ? { ...m, um_by_px: ratio }
+                        ? { ...m, um_by_px: ratio, is_ai: false, pixel_length: data.pixelLength, micrometers: data.micrometers }
                         : m,
                     ),
                   );
@@ -5715,16 +5665,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                 markMuestraAsDirtyForPdf(
                   getMuestraIdFromMicroId(microInfo.rawId),
                 );
-
-                const store = readCalibrationMetaStore();
-                store[microInfo.rawId] = {
-                  pixelLength: data.pixelLength,
-                  micrometers: data.micrometers,
-                  width: data.width,
-                  height: data.height,
-                  isAi: false,
-                };
-                writeCalibrationMetaStore(store);
               }
 
               setCalibrationData((prev) => ({

@@ -145,7 +145,7 @@ export default function Sidebar({ onLogoutConfirm }: SidebarProps) {
             <div style={{ ...styles.modalBody, padding: '20px 28px', maxHeight: '60vh', overflowY: 'auto' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div>
-                  <h4 style={{ margin: '0 0 12px 0', color: '#10243f', fontSize: '0.95rem', fontWeight: 700 }}>Árbol de Archivos</h4>
+                  <h4 style={{ margin: '0 0 12px 0', color: '#10243f', fontSize: '0.95rem', fontWeight: 700 }}>Administrador de archivos</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(22,163,74,0.15)', border: '1px solid #16a34a', color: '#16a34a', lineHeight: 1 }}>IA</span>
@@ -171,7 +171,7 @@ export default function Sidebar({ onLogoutConfirm }: SidebarProps) {
                 <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
                 
                 <div>
-                  <h4 style={{ margin: '0 0 12px 0', color: '#10243f', fontSize: '0.95rem', fontWeight: 700 }}>Galería</h4>
+                  <h4 style={{ margin: '0 0 12px 0', color: '#10243f', fontSize: '0.95rem', fontWeight: 700 }}>Galería de imágenes</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div style={{ background: 'rgba(22, 163, 74, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
