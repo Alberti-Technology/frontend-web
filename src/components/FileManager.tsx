@@ -2240,14 +2240,16 @@ function ImageLightboxCarousel({
                 draggable={false}
                 style={{
                   position: "absolute",
-                  inset: 0,
-                  width: "100%",
-                  height: "100%",
+                  top: showAiFx ? 4 : 0,
+                  left: showAiFx ? 4 : 0,
+                  width: showAiFx ? "calc(100% - 8px)" : "100%",
+                  height: showAiFx ? "calc(100% - 8px)" : "100%",
                   objectFit: "contain",
                   borderRadius: 8,
                   opacity: isMaskVisible ? 1 : 0,
                   transition: "opacity 1960ms cubic-bezier(0.22, 1, 0.36, 1)",
                   pointerEvents: "none",
+                  zIndex: showAiFx ? 2 : "auto",
                 }}
               />
             ) : null}
