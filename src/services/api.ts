@@ -320,6 +320,11 @@ export async function login(user: string, pass: string): Promise<string> {
     }
 
     // Manejar errores específicos del servidor
+    if (res.status === 423) {
+      document.body.innerHTML = '<div style="background:#b42318;color:white;font-family:sans-serif;height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:2rem;"><div><h1 style="font-size:3rem;margin-bottom:1rem">ACCESO BLOQUEADO</h1><p style="font-size:1.2rem">Se ha detectado un intento de inicio de sesión sospechoso o desde otro dispositivo no autorizado.<br/><br/>Por razones de seguridad, esta aplicación ha sido bloqueada. Contactá al administrador.</p></div></div>';
+      return "";
+    }
+
     if (res.status === 403) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || "Tu cuenta ha sido desactivada");
@@ -333,6 +338,15 @@ export async function login(user: string, pass: string): Promise<string> {
 }
 
 export function logout() {
+  const refreshToken = localStorage.getItem("refresh_token");
+  if (refreshToken) {
+    apiFetch("member/logout/", {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ refresh: refreshToken }),
+    }).catch(() => {});
+  }
+
   localStorage.removeItem("access_token");
   localStorage.removeItem("refresh_token");
   localStorage.removeItem("token");        // limpieza legacy
