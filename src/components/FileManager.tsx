@@ -1406,7 +1406,7 @@ function ImageLightboxCarousel({
 
   const LIGHTBOX_SIDE_MIN = 40;
   const MIN_CONTEXT_WIDTH = 280;
-  const borderPad = showAiFx ? 8 : 0;
+  const borderPad = showAiFx ? 8 : 0; // reserve space for the animated border
   const imageMaxWidth = Math.max(
     260,
     editorLayout.viewportWidth - LIGHTBOX_SIDE_MIN - MIN_CONTEXT_WIDTH - borderPad,
@@ -1496,6 +1496,8 @@ function ImageLightboxCarousel({
     setShowInputModal(false);
     setShowAutoDetectModal(false);
     setIsMaskDrawing(false);
+    setShowAutoDetectModal(false);
+    setIsMaskDrawing(false);
     clearCanvas();
 
     // If the user was using a drawing tool or viewing the mask panel,
@@ -1535,6 +1537,7 @@ function ImageLightboxCarousel({
     setIsMeasuring(false);
     setShowConfirmModal(false);
     setShowInputModal(false);
+    setShowAutoDetectModal(false);
     setShowAutoDetectModal(false);
     setMaskEditTool(null);
     setIsMaskDrawing(false);
@@ -2263,6 +2266,7 @@ function ImageLightboxCarousel({
                   borderRadius: 8,
                   opacity: 1,
                   cursor: maskEditTool === "pencil" ? "crosshair" : "cell",
+                  zIndex: 2,
                 }}
                 onMouseDown={handleMaskCanvasMouseDown}
                 onMouseMove={handleMaskCanvasMouseMove}
@@ -2282,6 +2286,7 @@ function ImageLightboxCarousel({
                       ? "default"
                       : "crosshair"
                     : "crosshair",
+                  zIndex: 2,
                 }}
                 onMouseDown={(e) => {
                   if (measurementMode) {
@@ -2889,7 +2894,6 @@ function ImageLightboxCarousel({
               )}
             </div>
           )}
-
         </div>
 
         {/* ---- MAIN (50%) ---- */}
@@ -3005,6 +3009,13 @@ function ImageLightboxCarousel({
                       <span>
                         Calibración: {calibrationRatio.toFixed(4)} µm/px
                       </span>
+                      {currentCalibration.pixelLength > 0 &&
+                        currentCalibration.micrometers > 0 && (
+                          <span>
+                            {currentCalibration.pixelLength} px ={" "}
+                            {currentCalibration.micrometers} µm
+                          </span>
+                        )}
                     </>
                   )}
                 </div>
@@ -3569,14 +3580,21 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     fetchAll();
   }, [fetchAll, token]);
 
+
   useEffect(() => {
     const nextCalibrationData: Record<string, CalibrationInfo> = {};
+    const nextFailed: Record<string, boolean> = {};
     let rememberedMicrometers = 0;
 
     apiMicrografias.forEach((mic) => {
+      const imageUrl = fixImageUrl(mic.imagen);
+      if (!imageUrl) return;
+
+      if ((mic as any).calibration_failed) {
+        nextFailed[imageUrl] = true;
+      }
+
       if (mic.um_by_px && mic.um_by_px > 0) {
-        const imageUrl = fixImageUrl(mic.imagen);
-        if (imageUrl) {
           nextCalibrationData[imageUrl] = {
             umByPx: Number(mic.um_by_px),
             isAi: !!mic.is_ai,
@@ -3586,11 +3604,11 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           if (mic.micrometers && mic.micrometers > 0) {
             rememberedMicrometers = Number(mic.micrometers);
           }
-        }
       }
     });
 
     setCalibrationData(nextCalibrationData);
+    setFailedCalibrationByUrl(prev => ({ ...prev, ...nextFailed }));
     if (rememberedMicrometers > 0) {
       setLastMicrometers(rememberedMicrometers);
     }
@@ -3612,6 +3630,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       const existing = calibrationDataRef.current[url];
       if (existing && existing.isAi === false) {
          setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
+         window.dispatchEvent(new CustomEvent("show_toast", { detail: { message: "Autocalibración por IA lista, no se aplica el resultado por micrografía ya calibrada manualmente", type: "warning" } }));
          return;
       }
       
@@ -3643,11 +3662,27 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       const existing = calibrationDataRef.current[url];
       if (existing && existing.isAi === false) {
          setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
+         window.dispatchEvent(new CustomEvent("show_toast", { detail: { message: "Autocalibración por IA fallida, micrografía ya calibrada manualmente", type: "warning" } }));
          return;
       }
 
       setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
       setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: true }));
+
+      const info = microInfoByUrlRef.current[url];
+      if (info?.rawId) {
+        const fd = new FormData();
+        fd.append("calibration_failed", "true");
+        api.updateMicrografia(info.rawId, fd).then(() => {
+          setApiMicrografias((prev) =>
+            prev.map((m) =>
+              String(m.id) === info.rawId
+                ? { ...m, calibration_failed: true } as any
+                : m,
+            ),
+          );
+        }).catch((err) => console.error("Error persisting auto-calibration failure", err));
+      }
     };
     window.addEventListener("calibration_started", handleCalibrationStarted);
     window.addEventListener("calibration_updated", handleCalibrationUpdated);
@@ -3817,6 +3852,14 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     },
     [removeToast],
   );
+
+  useEffect(() => {
+    const handleShowToast = (e: any) => {
+      pushToast(e.detail.message, e.detail.type || "warning", e.detail.duration || 6000);
+    };
+    window.addEventListener("show_toast", handleShowToast);
+    return () => window.removeEventListener("show_toast", handleShowToast);
+  }, [pushToast]);
 
   const closeMenu = () => undefined;
 
@@ -5631,8 +5674,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                 data.umByPx || data.micrometers / Math.max(data.pixelLength, 1);
               const microInfo = microInfoByUrl[url];
 
-              const calDataWithAi = { ...data, umByPx: ratio, isAi: false };
-              setCalibrationData((prev) => ({ ...prev, [url]: calDataWithAi }));
               setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
               setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: false }));
 
