@@ -52,6 +52,7 @@ async function processAutoCalibrateQueue() {
             micrometers: micrometers || 1,
             umByPx: data.um_per_pixel,
             isAi: true,
+            vertices: data.scale_detection.vertices,
           };
           window.dispatchEvent(new CustomEvent("calibration_updated", { detail: { url: item.imageUrl, data: calData } }));
         } else {
@@ -766,7 +767,7 @@ function CreateModal({
             {isBulk ? (
               <input
                 type="file"
-                accept="image/*"
+                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                 multiple
                 onChange={(e) => {
                   setFiles(Array.from(e.target.files || []));
@@ -777,7 +778,7 @@ function CreateModal({
             ) : (
               <input
                 type="file"
-                accept="image/*"
+                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                 onChange={(e) => {
                   setFile(e.target.files?.[0] || null);
                   if (validationError) setValidationError(null);
@@ -1089,6 +1090,7 @@ interface CalibrationInfo {
   height?: number;
   umByPx?: number;
   isAi?: boolean;
+  vertices?: number[][];
 }
 
 interface ToastNotification {
@@ -1312,6 +1314,7 @@ function ImageLightboxCarousel({
   } | null>(null);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [lineFinished, setLineFinished] = useState(false);
+  const [canvasLayoutCounter, setCanvasLayoutCounter] = useState(0);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showInputModal, setShowInputModal] = useState(false);
   const [showAutoDetectModal, setShowAutoDetectModal] = useState(false);
@@ -1594,6 +1597,7 @@ function ImageLightboxCarousel({
     canvas.style.width = img.clientWidth + "px";
     canvas.style.height = img.clientHeight + "px";
     syncEditorLayout();
+    setCanvasLayoutCounter(c => c + 1);
   }, [syncEditorLayout]);
 
   useEffect(() => {
@@ -1638,16 +1642,43 @@ function ImageLightboxCarousel({
       ctx.lineWidth = displayLineWidthPx * scale;
       ctx.lineCap = "round";
       ctx.stroke();
-      // Draw start/end dots
-      [start, end].forEach((p) => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, displayPointRadiusPx * scale, 0, Math.PI * 2);
-        ctx.fillStyle = "#ff3333";
-        ctx.fill();
-      });
     },
     [],
   );
+
+  // Draw AI calibration box
+  const drawVertices = useCallback((vertices: number[][]) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+    const scale = (scaleX + scaleY) / 2;
+    const displayLineWidthPx = 3;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    vertices.forEach((v, i) => {
+      if (i === 0) ctx.moveTo(v[0], v[1]);
+      else ctx.lineTo(v[0], v[1]);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = "#339eea";
+    ctx.lineWidth = displayLineWidthPx * scale;
+    ctx.stroke();
+  }, []);
+
+  useEffect(() => {
+    const currentImage = images[currentIndex];
+    if (!currentImage) return;
+    const data = calibrationData[currentImage.url];
+    // Only draw it if we're not currently doing manual calibration/measure and if it's AI
+    if (data?.vertices && data.isAi && !calibrationMode && !isMeasuring) {
+      drawVertices(data.vertices);
+    }
+  }, [currentIndex, calibrationData, drawVertices, images, calibrationMode, isMeasuring, canvasLayoutCounter]);
 
   // Get position relative to the canvas (which matches natural image coords)
   const getCanvasPos = (
@@ -2274,20 +2305,20 @@ function ImageLightboxCarousel({
                 onMouseLeave={handleMaskCanvasMouseLeave}
               />
             )}
-            {(calibrationMode || measurementMode) && (
-              <canvas
-                ref={canvasRef}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  cursor: calibrationMode
-                    ? lineFinished
-                      ? "default"
-                      : "crosshair"
-                    : "crosshair",
-                  zIndex: 2,
-                }}
+            <canvas
+              ref={canvasRef}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                cursor: calibrationMode
+                  ? lineFinished
+                    ? "default"
+                    : "crosshair"
+                  : measurementMode ? "crosshair" : "default",
+                zIndex: 2,
+                pointerEvents: (calibrationMode || measurementMode) ? "auto" : "none",
+              }}
                 onMouseDown={(e) => {
                   if (measurementMode) {
                     handleMeasurementMouseDown(e);
@@ -2315,7 +2346,6 @@ function ImageLightboxCarousel({
                   }
                 }}
               />
-            )}
             {/* Old pill removed */}
             {measurementMode &&
               measurementLabelPos &&
@@ -4133,8 +4163,15 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       else if (type === "micrografia") await api.deleteMicrografia(rawId);
 
       setDeleteModal(null);
-      setGalleryView({ kind: "none" });
-      setGalleryTitle("Seleccione un elemento");
+      setGalleryView((prev) => {
+        if (prev.kind === "none") return prev;
+        if (type === "micrografia" && prev.kind === "micrografias") {
+          const filtered = prev.images.filter((img) => String(img.id) !== id && img.rawId !== rawId);
+          if (filtered.length > 0) return { kind: "micrografias", images: filtered };
+        }
+        setGalleryTitle("Seleccione un elemento");
+        return { kind: "none" };
+      });
       fetchAll();
       pushToast("Elemento eliminado correctamente.", "success", 4200);
     } catch (e) {
@@ -4681,10 +4718,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       if (maskLoadingByImageUrl[imageUrl]) return;
 
       setMaskLoadingByImageUrl((prev) => ({ ...prev, [imageUrl]: true }));
-      const loaderId = api.showGlobalLoader(
-        "Generando máscara de material...",
-        "Esto puede tardar unos segundos.",
-      );
+      pushToast("Generando máscara de material...", "info", 5000);
 
       try {
         let finalMaskUrl = "";
@@ -4776,7 +4810,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           "No se pudo generar la máscara.";
         pushToast(msg, "error", 8600);
       } finally {
-        api.hideGlobalLoader(loaderId);
         setMaskLoadingByImageUrl((prev) => ({ ...prev, [imageUrl]: false }));
       }
     },
