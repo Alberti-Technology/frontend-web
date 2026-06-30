@@ -315,6 +315,7 @@ export async function login(user: string, pass: string): Promise<string> {
         localStorage.setItem("refresh_token", data.refresh || "");
         localStorage.setItem("user_id", data.user_id?.toString() || "");
         localStorage.setItem("username", data.username || user);
+        localStorage.setItem("company_enabled", data.company_enabled ? "true" : "false");
         return token;
       }
     }
@@ -420,6 +421,16 @@ export async function getMateriales(): Promise<ApiMaterial[]> {
 // -------------------------------------------------------------
 
 // MUESTRAS
+export async function createMaterial(formData: FormData) {
+  const res = await apiFetchWithAuth("metalografia/material/", {
+    method: "POST",
+    headers: getHeaders(true),
+    body: formData,
+  });
+  if (!res.ok) throw new Error("Error creando material");
+  return res.json();
+}
+
 export async function createMuestra(formData: FormData) {
   const res = await apiFetchWithAuth("metalografia/muestras/", {
     method: "POST",
@@ -832,4 +843,19 @@ export async function getReportInfo(reportId: string | number) {
   });
   if (!res.ok) throw new Error("Error fetching report");
   return res.json();
+}
+
+export async function getCompanyStatus(): Promise<boolean> {
+  try {
+    const res = await apiFetchWithAuth("member/company/status/", {
+      headers: getHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.is_enabled;
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return true;
 }

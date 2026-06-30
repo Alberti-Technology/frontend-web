@@ -18,6 +18,7 @@ let isProcessingCalibrationQueue = false;
 
 const addMicrografiaToAutoCalibrationQueue = (file: Blob, normalizedImageUrl: string) => {
   if (!file || !normalizedImageUrl) return;
+  if (typeof window !== "undefined" && localStorage.getItem("company_enabled") !== "true") return;
   const autoCalFd = new FormData();
   autoCalFd.append("file", file, "image.jpg");
   autoCalibrateQueue.push({
@@ -641,7 +642,7 @@ function CreateModal({
   onCancel,
 }: {
   parentId: string | number;
-  type: "muestra" | "region" | "micrografia";
+  type: "material" | "muestra" | "region" | "micrografia";
   onConfirm: (fds: FormData[]) => void;
   onCancel: () => void;
 }) {
@@ -655,6 +656,7 @@ function CreateModal({
 
   // Helper title
   const titles = {
+    material: "Añadir nuevo Material",
     muestra: "Añadir nueva Muestra",
     region: "Añadir nueva Región",
     micrografia: "Añadir Micrografías",
@@ -682,8 +684,8 @@ function CreateModal({
         setLoading(false);
       }
     } else {
-      if (!name.trim() || !file) {
-        setValidationError("Nombre e imagen son requeridos.");
+      if (!name.trim() || (type !== "material" && !file)) {
+        setValidationError(type === "material" ? "Nombre es requerido." : "Nombre e imagen son requeridos.");
         return;
       }
       setLoading(true);
@@ -691,7 +693,9 @@ function CreateModal({
       try {
         const fd = new FormData();
         fd.append("nombre", name.trim());
-        fd.append("imagen", file);
+        if (file) {
+          fd.append("imagen", file);
+        }
         if (type === "muestra") {
           fd.append("informacion", info.trim());
           fd.append("material", String(parentId));
@@ -760,33 +764,35 @@ function CreateModal({
               />
             </div>
           )}
-          <div>
-            <label className="block text-xs font-semibold text-[#10243f] mb-2">
-              {isBulk ? `Imágenes (${files.length} seleccionadas)` : "Imagen"}
-            </label>
-            {isBulk ? (
-              <input
-                type="file"
-                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                multiple
-                onChange={(e) => {
-                  setFiles(Array.from(e.target.files || []));
-                  if (validationError) setValidationError(null);
-                }}
-                className="w-full text-sm text-[#4d6684] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#eef8ff] file:text-[#339eea] hover:file:bg-[#dff1ff] transition"
-              />
-            ) : (
-              <input
-                type="file"
-                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                onChange={(e) => {
-                  setFile(e.target.files?.[0] || null);
-                  if (validationError) setValidationError(null);
-                }}
-                className="w-full text-sm text-[#4d6684] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#eef8ff] file:text-[#339eea] hover:file:bg-[#dff1ff] transition"
-              />
-            )}
-          </div>
+          {type !== "material" && (
+            <div>
+              <label className="block text-xs font-semibold text-[#10243f] mb-2">
+                {isBulk ? `Imágenes (${files.length} seleccionadas)` : "Imagen"}
+              </label>
+              {isBulk ? (
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  multiple
+                  onChange={(e) => {
+                    setFiles(Array.from(e.target.files || []));
+                    if (validationError) setValidationError(null);
+                  }}
+                  className="w-full text-sm text-[#4d6684] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#eef8ff] file:text-[#339eea] hover:file:bg-[#dff1ff] transition"
+                />
+              ) : (
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  onChange={(e) => {
+                    setFile(e.target.files?.[0] || null);
+                    if (validationError) setValidationError(null);
+                  }}
+                  className="w-full text-sm text-[#4d6684] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#eef8ff] file:text-[#339eea] hover:file:bg-[#dff1ff] transition"
+                />
+              )}
+            </div>
+          )}
           {validationError && (
             <p className="m-0 text-[12px] font-semibold text-[#b42318]">
               {validationError}
@@ -828,6 +834,7 @@ function ResponsiveGallery({
   calibratingByUrl,
   failedCalibrationByUrl,
   calibrationData,
+  companyEnabled,
   onImageClick,
 }: {
   images: { name: string; url: string }[];
@@ -836,6 +843,7 @@ function ResponsiveGallery({
   calibratingByUrl?: Record<string, boolean>;
   failedCalibrationByUrl?: Record<string, boolean>;
   calibrationData?: Record<string, CalibrationInfo>;
+  companyEnabled?: boolean;
   onImageClick: (img: { name: string; url: string }) => void;
 }) {
   const count = images.length;
@@ -941,7 +949,7 @@ function ResponsiveGallery({
                 }}
                 onClick={() => onImageClick(img)}
               >
-                {isCalibrable && (
+                {isCalibrable && companyEnabled !== false && (
                   <div
                     style={{
                       position: "absolute",
@@ -1270,6 +1278,7 @@ function ImageLightboxCarousel({
   calibratingByUrl,
   failedCalibrationByUrl,
   onRetryAutoCalibration,
+  onCheckMicrographLimit = (action) => action(),
 }: {
   images: { name: string; url: string }[];
   initialIndex: number;
@@ -1292,6 +1301,7 @@ function ImageLightboxCarousel({
   onRetryAutoCalibration?: (imageUrl: string) => void;
   calibratingByUrl?: Record<string, boolean>;
   failedCalibrationByUrl?: Record<string, boolean>;
+  onCheckMicrographLimit?: (action: () => void) => void;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [calibrationMode, setCalibrationMode] = useState(false);
@@ -2436,7 +2446,7 @@ function ImageLightboxCarousel({
                   justifyContent: "center",
                   transition: "background 0.15s, transform 0.15s",
                 }}
-                onClick={handleActivateCalibration}
+                onClick={() => onCheckMicrographLimit(handleActivateCalibration)}
                 onMouseOver={(e) => {
                   if (!calibrationMode)
                     e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -2469,10 +2479,10 @@ function ImageLightboxCarousel({
                   opacity: !!calibratingByUrl?.[currentImage.url] ? 0.65 : 1,
                 }}
                 disabled={!!calibratingByUrl?.[currentImage.url] || !onRetryAutoCalibration}
-                onClick={() => {
+                onClick={() => onCheckMicrographLimit(() => {
                   if (!currentImage?.url || !!calibratingByUrl?.[currentImage.url] || !onRetryAutoCalibration) return;
                   onRetryAutoCalibration(currentImage.url);
-                }}
+                })}
                 onMouseOver={(e) => {
                   if (!!calibratingByUrl?.[currentImage.url]) return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -2510,10 +2520,10 @@ function ImageLightboxCarousel({
                   transition: "background 0.15s",
                   opacity: measurementEnabled ? 1 : 0.55,
                 }}
-                onClick={() => {
+                onClick={() => onCheckMicrographLimit(() => {
                   if (!measurementEnabled) return;
                   handleActivateMeasurement();
-                }}
+                })}
                 onMouseOver={(e) => {
                   if (
                     !measurementEnabled ||
@@ -2561,14 +2571,14 @@ function ImageLightboxCarousel({
                   opacity: isMaskLoading ? 0.65 : 1,
                 }}
                 disabled={isMaskLoading}
-                onClick={() => {
+                onClick={() => onCheckMicrographLimit(() => {
                   if (isMaskVisible) {
                     setActiveSidebarTool("overview");
                   } else {
                     setActiveSidebarTool("mask");
                   }
                   void onGenerateMask(currentImage.url);
-                }}
+                })}
                 onMouseOver={(e) => {
                   if (isMaskLoading || isMaskVisible) return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -2601,12 +2611,12 @@ function ImageLightboxCarousel({
                   transition: "background 0.15s",
                   opacity: 1,
                 }}
-                onClick={() => {
+                onClick={() => onCheckMicrographLimit(() => {
                   setActiveSidebarTool("mask");
                   setMaskEditTool((prev) =>
                     prev === "pencil" ? null : "pencil",
                   );
-                }}
+                })}
                 onMouseOver={(e) => {
                   if (maskEditTool === "pencil") return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -2639,12 +2649,12 @@ function ImageLightboxCarousel({
                   transition: "background 0.15s",
                   opacity: 1,
                 }}
-                onClick={() => {
+                onClick={() => onCheckMicrographLimit(() => {
                   setActiveSidebarTool("mask");
                   setMaskEditTool((prev) =>
                     prev === "eraser" ? null : "eraser",
                   );
-                }}
+                })}
                 onMouseOver={(e) => {
                   if (maskEditTool === "eraser") return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -2674,10 +2684,10 @@ function ImageLightboxCarousel({
                   opacity: isDrawingToolActive ? 1 : 0.45,
                 }}
                 disabled={!isDrawingToolActive}
-                onClick={() => {
+                onClick={() => onCheckMicrographLimit(() => {
                   if (!isDrawingToolActive) return;
                   clearCurrentDrawing();
-                }}
+                })}
                 onMouseOver={(e) => {
                   if (!isDrawingToolActive) return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -3433,6 +3443,17 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null,
   );
 
+  const [companyEnabled, setCompanyEnabled] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("company_enabled") === "true";
+    }
+    return true;
+  });
+
+  const [showDisabledCompanyModal, setShowDisabledCompanyModal] = useState<boolean>(!companyEnabled);
+
+
+
   const apiOrigin = useMemo(() => {
     try {
       return new URL(api.BASE_URL).origin;
@@ -3578,16 +3599,25 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     if (!token) return;
     setIsLoading(true);
     try {
-      const [m, mats, r, img] = await Promise.all([
+      const [m, mats, r, img, companyStatus] = await Promise.all([
         api.getMuestras(),
         api.getMateriales(),
         api.getRegiones(),
         api.getMicrografias(),
+        api.getCompanyStatus(),
       ]);
       setApiMuestras(m);
       setApiMateriales(mats);
       setApiRegiones(r);
       setApiMicrografias(img);
+      
+      if (companyStatus !== companyEnabled) {
+        setCompanyEnabled(companyStatus);
+        setShowDisabledCompanyModal(!companyStatus);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("company_enabled", companyStatus ? "true" : "false");
+        }
+      }
       return { m, mats, r, img };
     } catch (err) {
       console.error(err);
@@ -3834,7 +3864,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
   const [renameModalError, setRenameModalError] = useState<string | null>(null);
   const [createModal, setCreateModal] = useState<{
     parentId: string | number;
-    type: "muestra" | "region" | "micrografia";
+    type: "material" | "muestra" | "region" | "micrografia";
   } | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{
     current: number;
@@ -3882,6 +3912,14 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     },
     [removeToast],
   );
+
+  const checkMicrographLimit = useCallback((action: () => void) => {
+    if (!companyEnabled) {
+      pushToast(`Tu compañía no está habilitada aún.`, "error", 5000);
+    } else {
+      action();
+    }
+  }, [companyEnabled, pushToast]);
 
   useEffect(() => {
     const handleShowToast = (e: any) => {
@@ -4311,7 +4349,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       } else {
         // Single upload
         const fd = fds[0];
-        if (currentCreateModal?.type === "muestra") await api.createMuestra(fd);
+        if (currentCreateModal?.type === "material") await api.createMaterial(fd);
+        else if (currentCreateModal?.type === "muestra") await api.createMuestra(fd);
         else if (currentCreateModal?.type === "region")
           await api.createRegion(fd);
         else if (currentCreateModal?.type === "micrografia") {
@@ -4369,7 +4408,11 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           setGalleryView({ kind: "micrografias", images: nextMicrografias });
         }
       }
-      pushToast("Elemento creado correctamente.", "success", 4200);
+      if (currentCreateModal?.type === "micrografia") {
+        pushToast(`${fds.length} micrografía${fds.length > 1 ? 's' : ''} añadida${fds.length > 1 ? 's' : ''} correctamente.`, "success", 4200);
+      } else {
+        pushToast("Elemento creado correctamente.", "success", 4200);
+      }
     } catch (e) {
       const maybeApiError = e as ApiLikeError;
       if (
@@ -4559,8 +4602,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     try {
       setPdfLoading(true);
       await api.generatePdf(selectedPdfMuestraId);
-      setShowInformeDispatchMessage(true);
-      setPdfStatusMessage("Solicitud de informe enviada. En proceso.");
+      pushToast("Solicitud de informe enviada. En proceso.", "info", 5000);
       setQueuedPdfMuestraIds((prev) => new Set(prev).add(selectedPdfMuestraId));
       setDirtyPdfMuestraIds((prev) => {
         const next = new Set(prev);
@@ -4890,7 +4932,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           >
             {name}
           </span>
-          {type === "micrografia" && (
+          {type === "micrografia" && companyEnabled !== false && (
             <span
               title={isCalibrated ? "Calibrada" : isCalibrating ? "Autocalibrando..." : isFailed ? "Fallo IA" : "Sin calibrar"}
               style={{
@@ -5069,16 +5111,34 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           onScroll={closeMenu}
         >
           {/* MATERIALES header */}
-          <div
-            className="mx-2 my-2 inline-flex items-center px-3 py-1.5 text-[11px] font-bold text-[#3f6b8f] uppercase tracking-[0.12em] cursor-pointer select-none rounded-lg border border-[#b7dbf7] bg-white shadow-[0_1px_2px_rgba(16,36,63,0.06)] transition-shadow hover:shadow-[0_8px_16px_rgba(16,36,63,0.16)]"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleHeaderMateriales();
-            }}
-            title="Ver todas las imágenes de Materiales"
-          >
-            Materiales
+          <div className="flex items-center gap-2">
+            <div
+              className="mx-2 my-2 inline-flex items-center px-3 py-1.5 text-[11px] font-bold text-[#3f6b8f] uppercase tracking-[0.12em] cursor-pointer select-none rounded-lg border border-[#b7dbf7] bg-white shadow-[0_1px_2px_rgba(16,36,63,0.06)] transition-shadow hover:shadow-[0_8px_16px_rgba(16,36,63,0.16)]"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleHeaderMateriales();
+              }}
+              title="Ver todas las imágenes de Materiales"
+            >
+              Materiales
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                checkMicrographLimit(() =>
+                  setCreateModal({ parentId: "root", type: "material" })
+                );
+              }}
+              title="Crear Material"
+              className="w-6 h-6 flex items-center justify-center rounded border border-[#b7dbf7] text-[#3f6b8f] hover:bg-[#eef8ff] transition shadow-[0_1px_2px_rgba(16,36,63,0.06)] bg-white cursor-pointer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
           </div>
+
 
           {/* Material items */}
           {materials.map((mat) => (
@@ -5222,6 +5282,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             className="custom-scrollbar"
           >
             <ResponsiveGallery
+              companyEnabled={companyEnabled}
               images={galleryImages}
               calibrableByUrl={galleryCalibrableByUrl}
               calibratedByUrl={galleryCalibratedByUrl}
@@ -5254,9 +5315,9 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           style={{
             gridArea: "gallery",
             position: "fixed",
-            bottom: 24,
+            top: "50%",
             left: "50%",
-            transform: "translateX(-50%)",
+            transform: "translate(-50%, -50%)",
             zIndex: 200,
             background: "white",
             border: "1px solid rgba(51,158,234,0.3)",
@@ -5361,7 +5422,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               style={{
                 border: "1px solid rgba(16,36,63,0.16)",
                 borderRadius: 18,
-                padding: 10,
+                padding: "10px 2px 10px 10px",
                 background: "#f9fcff",
                 minHeight: 120,
                 minWidth: 0,
@@ -5369,6 +5430,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                 flexDirection: "column",
                 gap: 10,
                 height: "100%",
+                overflow: "hidden",
               }}
             >
               {informesListIsEmpty ? (
@@ -5389,22 +5451,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                 </div>
               ) : (
                 <>
-                  {pdfStatusMessage && (
-                    <div
-                      style={{
-                        fontSize: "0.82rem",
-                        color: "#4d6684",
-                        background: "white",
-                        padding: "8px 10px",
-                        borderRadius: 10,
-                        border: "1px dashed rgba(16,36,63,0.22)",
-                        textAlign: "center",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {pdfStatusMessage}
-                    </div>
-                  )}
 
                   {pdfHistory.length > 0 && (
                     <div
@@ -5414,7 +5460,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                         flex: 1,
                         overflowY: "auto",
                         minHeight: 0,
-                        paddingRight: 2,
                       }}
                     >
                       <ul
@@ -5452,6 +5497,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                                 whiteSpace: "nowrap",
                                 flex: 1,
                                 minWidth: 0,
+                                textAlign: "center",
                               }}
                             >
                               {pdf.value || `Informe_ID_${pdf.id}`}.pdf
@@ -5479,13 +5525,14 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               style={{
                 border: "1px solid rgba(16,36,63,0.16)",
                 borderRadius: 18,
-                padding: 10,
+                padding: "10px 2px 10px 10px",
                 background: "#f9fcff",
                 minHeight: 120,
                 minWidth: 0,
                 display: "flex",
                 flexDirection: "column",
                 height: "100%",
+                overflow: "hidden",
               }}
             >
               {muestrasListIsEmpty ? (
@@ -5512,7 +5559,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                     flex: 1,
                     overflowY: "auto",
                     minHeight: 0,
-                    paddingRight: 2,
                   }}
                 >
                   <ul
@@ -5634,7 +5680,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
 
             <button
               className="pdf-btn-primary"
-              onClick={handleGeneratePdf}
+              onClick={() => checkMicrographLimit(handleGeneratePdf)}
               disabled={
                 pdfLoading ||
                 selectedPdfMuestraLocked ||
@@ -5677,6 +5723,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         typeof document !== "undefined" &&
         createPortal(
           <ImageLightboxCarousel
+            onCheckMicrographLimit={checkMicrographLimit}
             images={lightboxImages}
             initialIndex={lightboxIndex}
             calibrableByUrl={lightboxCalibrableByUrl}
@@ -5958,6 +6005,37 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           </div>,
           document.body,
         )}
+
+      {showDisabledCompanyModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+          <div className="absolute inset-0 bg-[#10243f66] backdrop-blur-sm" />
+          <div
+            className="relative bg-white rounded-[28px] shadow-xl border border-[#10243f14] max-w-md w-[90%] overflow-hidden text-center p-8"
+          >
+            <div
+              className="w-16 h-16 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-6"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <h2 className="m-0 mb-4 text-[#10243f] text-2xl font-bold">
+              Compañía en Revisión
+            </h2>
+            <p className="m-0 mb-6 text-[#4d6684] leading-relaxed">
+              Tu compañía aún no está habilitada. Debes cargar al menos <strong>20 micrografías</strong> ordenadas como quieras (materiales, muestras, regiones) y luego esperar la habilitación manual de los administradores.
+            </p>
+            <button
+              onClick={() => setShowDisabledCompanyModal(false)}
+              className="px-8 py-3 rounded-xl bg-[#10243f] text-white font-semibold text-base cursor-pointer transition-opacity hover:opacity-90 border-none w-full"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
 
       <style
         dangerouslySetInnerHTML={{
