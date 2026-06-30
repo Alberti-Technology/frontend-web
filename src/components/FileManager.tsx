@@ -5125,9 +5125,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                checkMicrographLimit(() =>
-                  setCreateModal({ parentId: "root", type: "material" })
-                );
+                setCreateModal({ parentId: "root", type: "material" });
               }}
               title="Crear Material"
               className="w-6 h-6 flex items-center justify-center rounded border border-[#b7dbf7] text-[#3f6b8f] hover:bg-[#eef8ff] transition shadow-[0_1px_2px_rgba(16,36,63,0.06)] bg-white cursor-pointer"
