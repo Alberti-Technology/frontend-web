@@ -8,6 +8,10 @@ import React, {
 import { createPortal } from "react-dom";
 import * as api from "../services/api";
 import { CLOUDINARY_BASE_URL } from "../config/apiConfig";
+import {
+  MICROGRAPHY_MEASURE_COMPLETED_EVENT,
+  type MicrographyMeasureCompletedEvent,
+} from "../services/notifications";
 
 const MASK_STORAGE_KEY = "mask_cache_v2_by_micro_id";
 const MASK_LABELS_STORAGE_KEY = "mask_labels_by_micro_id";
@@ -835,6 +839,7 @@ function ResponsiveGallery({
   failedCalibrationByUrl,
   calibrationData,
   companyEnabled,
+  highlightedByUrl,
   onImageClick,
 }: {
   images: { name: string; url: string }[];
@@ -844,6 +849,7 @@ function ResponsiveGallery({
   failedCalibrationByUrl?: Record<string, boolean>;
   calibrationData?: Record<string, CalibrationInfo>;
   companyEnabled?: boolean;
+  highlightedByUrl?: Record<string, boolean>;
   onImageClick: (img: { name: string; url: string }) => void;
 }) {
   const count = images.length;
@@ -934,10 +940,11 @@ function ResponsiveGallery({
             const isCalibrated = isCalibrable && (!!calibratedByUrl[img.url] || (!!calibrationData?.[img.url]?.umByPx && Number(calibrationData?.[img.url]?.umByPx) > 0));
             const isCalibrating = !!calibratingByUrl?.[img.url];
             const isFailed = !!failedCalibrationByUrl?.[img.url];
+            const isHighlighted = !!highlightedByUrl?.[img.url];
             return (
               <div
                 key={`${img.url}-${i}`}
-                className="rounded-xl overflow-hidden border border-[#10243f14] cursor-zoom-in group relative shadow-sm hover:shadow-lg transition-all"
+                className="rounded-xl overflow-hidden cursor-zoom-in group relative transition-all"
                 style={{
                   width: "100%",
                   height: "auto",
@@ -946,9 +953,34 @@ function ResponsiveGallery({
                   aspectRatio: cardAspectRatio,
                   overflow: "hidden",
                   background: "#f0f4f8",
+                  border: isHighlighted
+                    ? "2px solid #16a34a"
+                    : "1px solid rgba(16,36,63,0.08)",
+                  boxShadow: isHighlighted
+                    ? "0 0 0 4px rgba(22,163,74,0.18), 0 16px 30px rgba(16,36,63,0.16)"
+                    : "0 1px 3px rgba(16,36,63,0.08)",
                 }}
                 onClick={() => onImageClick(img)}
               >
+                {isHighlighted && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 8,
+                      right: 8,
+                      zIndex: 3,
+                      background: "rgba(22, 163, 74, 0.95)",
+                      color: "white",
+                      fontSize: "0.68rem",
+                      fontWeight: 800,
+                      padding: "4px 8px",
+                      borderRadius: 999,
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+                    }}
+                  >
+                    Medicion lista
+                  </div>
+                )}
                 {isCalibrable && companyEnabled !== false && (
                   <div
                     style={{
@@ -1277,6 +1309,9 @@ function ImageLightboxCarousel({
   contextInfo,
   calibratingByUrl,
   failedCalibrationByUrl,
+  measurementOverlayByUrl,
+  measurementOverlayVisibleByUrl,
+  onToggleMeasurementOverlay,
   onRetryAutoCalibration,
   onCheckMicrographLimit = (action) => action(),
 }: {
@@ -1302,6 +1337,9 @@ function ImageLightboxCarousel({
   calibratingByUrl?: Record<string, boolean>;
   failedCalibrationByUrl?: Record<string, boolean>;
   onCheckMicrographLimit?: (action: () => void) => void;
+  measurementOverlayByUrl?: Record<string, string>;
+  measurementOverlayVisibleByUrl?: Record<string, boolean>;
+  onToggleMeasurementOverlay?: (imageUrl: string) => void;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [calibrationMode, setCalibrationMode] = useState(false);
@@ -1372,6 +1410,14 @@ function ImageLightboxCarousel({
   const currentMaskUrl = maskByImageUrl[currentImage.url] || "";
   const currentDrawUrl = drawByImageUrl[currentImage.url] || "";
   const currentMaskLabels = maskLabelsByImageUrl[currentImage.url];
+  const currentMeasurementOverlayUrl =
+    measurementOverlayByUrl?.[currentImage.url] || "";
+  const isMeasurementOverlayVisible =
+    !!measurementOverlayVisibleByUrl?.[currentImage.url];
+  const displayedImageUrl =
+    currentMeasurementOverlayUrl && isMeasurementOverlayVisible
+      ? currentMeasurementOverlayUrl
+      : currentImage.url;
   const isMaskVisible =
     !!currentMaskUrl && maskVisibleByImageUrl[currentImage.url] !== false;
   const isMaskLoading = !!maskLoadingByImageUrl[currentImage.url];
@@ -2264,8 +2310,12 @@ function ImageLightboxCarousel({
             )}
             <img
               ref={imgRef}
-              src={currentImage.url}
-              alt={currentImage.name}
+              src={displayedImageUrl}
+              alt={
+                isMeasurementOverlayVisible
+                  ? `Medicion de ${currentImage.name}`
+                  : currentImage.name
+              }
               draggable={false}
               onLoad={syncCanvasSize}
               style={{
@@ -2277,7 +2327,7 @@ function ImageLightboxCarousel({
                 zIndex: showAiFx ? 1 : "auto",
               }}
             />
-            {currentMaskUrl ? (
+            {currentMaskUrl && !isMeasurementOverlayVisible ? (
               <img
                 src={currentMaskUrl}
                 alt={`Mascara de ${currentImage.name}`}
@@ -2297,7 +2347,60 @@ function ImageLightboxCarousel({
                 }}
               />
             ) : null}
-            {maskEditTool && (
+            {currentMeasurementOverlayUrl && (
+              <button
+                type="button"
+                title={
+                  isMeasurementOverlayVisible
+                    ? "Volver a micrografia original"
+                    : "Ver imagen de medicion"
+                }
+                aria-label={
+                  isMeasurementOverlayVisible
+                    ? "Volver a micrografia original"
+                    : "Ver imagen de medicion"
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleMeasurementOverlay?.(currentImage.url);
+                }}
+                style={{
+                  position: "absolute",
+                  top: showAiFx ? 14 : 10,
+                  right: showAiFx ? 14 : 10,
+                  zIndex: 6,
+                  width: 38,
+                  height: 38,
+                  border: 0,
+                  borderRadius: 10,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  background: isMeasurementOverlayVisible
+                    ? "rgba(22, 163, 74, 0.96)"
+                    : "rgba(255, 255, 255, 0.94)",
+                  color: isMeasurementOverlayVisible ? "white" : "#166534",
+                  boxShadow: "0 5px 16px rgba(0,0,0,0.28)",
+                }}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="19"
+                  height="19"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M3 3v18h18"></path>
+                  <path d="M7 16l4-4 3 3 6-7"></path>
+                </svg>
+              </button>
+            )}
+            {maskEditTool && !isMeasurementOverlayVisible && (
               <canvas
                 ref={maskCanvasRef}
                 style={{
@@ -2321,13 +2424,14 @@ function ImageLightboxCarousel({
                 position: "absolute",
                 top: 0,
                 left: 0,
+                display: isMeasurementOverlayVisible ? "none" : "block",
                 cursor: calibrationMode
                   ? lineFinished
                     ? "default"
                     : "crosshair"
                   : measurementMode ? "crosshair" : "default",
                 zIndex: 2,
-                pointerEvents: (calibrationMode || measurementMode) ? "auto" : "none",
+                pointerEvents: (!isMeasurementOverlayVisible && (calibrationMode || measurementMode)) ? "auto" : "none",
               }}
                 onMouseDown={(e) => {
                   if (measurementMode) {
@@ -3551,45 +3655,49 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     return map;
   }, [microInfoByUrl]);
 
-  const materials: Material[] = apiMateriales.map((material) => {
-    const muestrasDelMaterial = apiMuestras.filter(
-      (mue) => String(mue.material) === String(material.id),
-    );
+  const materials: Material[] = useMemo(
+    () =>
+      apiMateriales.map((material) => {
+        const muestrasDelMaterial = apiMuestras.filter(
+          (mue) => String(mue.material) === String(material.id),
+        );
 
-    const muestraImage = muestrasDelMaterial[0]?.imagen
-      ? fixImageUrl(muestrasDelMaterial[0].imagen)
-      : "";
+        const muestraImage = muestrasDelMaterial[0]?.imagen
+          ? fixImageUrl(muestrasDelMaterial[0].imagen)
+          : "";
 
-    return {
-      id: `mat_${material.id}`,
-      name: material.nombre,
-      image: muestraImage,
-      muestras: muestrasDelMaterial.map((mue) => ({
-        id: `mue_${mue.id}`,
-        name: mue.nombre,
-        image: fixImageUrl(mue.imagen),
-        regiones: apiRegiones
-          .filter((r) => String(r.muestra) === String(mue.id))
-          .map((reg) => ({
-            id: `reg_${reg.id}`,
-            name: reg.nombre,
-            image: fixImageUrl(reg.imagen),
-            micrografias: apiMicrografias
-              .filter((mic) => String(mic.region) === String(reg.id))
-              .map((mic) => ({
-                id: `mic_${mic.id}`,
-                rawId: String(mic.id),
-                name: mic.nombre,
-                url: fixImageUrl(mic.imagen),
-                umByPx:
-                  mic.um_by_px !== undefined && mic.um_by_px !== null
-                    ? Number(mic.um_by_px)
-                    : null,
+        return {
+          id: `mat_${material.id}`,
+          name: material.nombre,
+          image: muestraImage,
+          muestras: muestrasDelMaterial.map((mue) => ({
+            id: `mue_${mue.id}`,
+            name: mue.nombre,
+            image: fixImageUrl(mue.imagen),
+            regiones: apiRegiones
+              .filter((r) => String(r.muestra) === String(mue.id))
+              .map((reg) => ({
+                id: `reg_${reg.id}`,
+                name: reg.nombre,
+                image: fixImageUrl(reg.imagen),
+                micrografias: apiMicrografias
+                  .filter((mic) => String(mic.region) === String(reg.id))
+                  .map((mic) => ({
+                    id: `mic_${mic.id}`,
+                    rawId: String(mic.id),
+                    name: mic.nombre,
+                    url: fixImageUrl(mic.imagen),
+                    umByPx:
+                      mic.um_by_px !== undefined && mic.um_by_px !== null
+                        ? Number(mic.um_by_px)
+                        : null,
+                  })),
               })),
           })),
-      })),
-    };
-  });
+        };
+      }),
+    [apiMateriales, apiMuestras, apiRegiones, apiMicrografias, fixImageUrl],
+  );
 
   // Extract raw API id from namespaced id (e.g. "mue_42" → "42")
   const apiId = (namespacedId: string) =>
@@ -3793,6 +3901,14 @@ export default function FileManager({ onLogout }: FileManagerProps) {
   // Gallery view
   const [galleryView, setGalleryView] = useState<GalleryView>({ kind: "none" });
   const [galleryTitle, setGalleryTitle] = useState("Seleccione un elemento");
+  const [activeMeasureEvent, setActiveMeasureEvent] =
+    useState<MicrographyMeasureCompletedEvent | null>(null);
+  const [activeMicrografiaId, setActiveMicrografiaId] = useState<string | null>(
+    null,
+  );
+  const [measurementOverlayVisibleByUrl, setMeasurementOverlayVisibleByUrl] =
+    useState<Record<string, boolean>>({});
+  const missingActiveMicrografiaRefreshRef = useRef<string | null>(null);
 
   // Derive context info for the lightbox from the selected node in the tree
   const lightboxContextInfo = useMemo(() => {
@@ -3929,6 +4045,67 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     return () => window.removeEventListener("show_toast", handleShowToast);
   }, [pushToast]);
 
+  useEffect(() => {
+    const handleMeasureCompleted = (event: Event) => {
+      const payload = (event as CustomEvent<MicrographyMeasureCompletedEvent>)
+        .detail;
+      const microId = normalizeId(payload?.micrografia_id);
+      if (!microId) return;
+
+      setActiveMeasureEvent(payload);
+      setActiveMicrografiaId(microId);
+      missingActiveMicrografiaRefreshRef.current = null;
+      pushToast(
+        `Medicion completada para micrografia ${microId}.`,
+        "success",
+        6200,
+      );
+    };
+
+    window.addEventListener(
+      MICROGRAPHY_MEASURE_COMPLETED_EVENT,
+      handleMeasureCompleted,
+    );
+    return () =>
+      window.removeEventListener(
+        MICROGRAPHY_MEASURE_COMPLETED_EVENT,
+        handleMeasureCompleted,
+      );
+  }, [pushToast]);
+
+  useEffect(() => {
+    if (!activeMicrografiaId) return;
+
+    for (const mat of materials) {
+      for (const mue of mat.muestras) {
+        for (const reg of mue.regiones) {
+          const mic = reg.micrografias.find(
+            (item) => item.rawId === activeMicrografiaId,
+          );
+          if (!mic) continue;
+
+          setExpandedIds((prev) => {
+            const next = new Set(prev);
+            next.add(mat.id);
+            next.add(mue.id);
+            next.add(reg.id);
+            return next;
+          });
+          setSelectedId(mic.id);
+          setGalleryTitle(mic.name);
+          setGalleryView({ kind: "micrografias", images: [mic] });
+          return;
+        }
+      }
+    }
+
+    if (missingActiveMicrografiaRefreshRef.current === activeMicrografiaId) {
+      return;
+    }
+    missingActiveMicrografiaRefreshRef.current = activeMicrografiaId;
+    void fetchAll();
+  }, [activeMicrografiaId, materials, fetchAll]);
+
   const closeMenu = () => undefined;
 
   const toggleExpand = (id: string) => {
@@ -3983,6 +4160,35 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     });
     return map;
   }, [galleryImages, galleryCalibrableByUrl, calibratedByUrl]);
+
+  const activeMicrografiaUrl = useMemo(() => {
+    if (!activeMicrografiaId) return null;
+    const micro = apiMicrografias.find(
+      (item) => String(item.id) === activeMicrografiaId,
+    );
+    return micro ? fixImageUrl(micro.imagen) : null;
+  }, [activeMicrografiaId, apiMicrografias, fixImageUrl]);
+
+  const highlightedGalleryByUrl = useMemo(() => {
+    if (!activeMicrografiaUrl) return {} as Record<string, boolean>;
+    return { [activeMicrografiaUrl]: true };
+  }, [activeMicrografiaUrl]);
+
+  const measurementOverlayByUrl = useMemo(() => {
+    if (!activeMicrografiaUrl || !activeMeasureEvent?.imagen) {
+      return {} as Record<string, string>;
+    }
+    return {
+      [activeMicrografiaUrl]: fixImageUrl(activeMeasureEvent.imagen),
+    };
+  }, [activeMicrografiaUrl, activeMeasureEvent, fixImageUrl]);
+
+  const toggleMeasurementOverlay = useCallback((imageUrl: string) => {
+    setMeasurementOverlayVisibleByUrl((prev) => ({
+      ...prev,
+      [imageUrl]: !prev[imageUrl],
+    }));
+  }, []);
 
   const microSiblingsByUrl = useMemo(() => {
     const map: Record<string, { name: string; url: string }[]> = {};
@@ -4877,6 +5083,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     isCalibrating = false,
     isFailed = false,
     isAi = false,
+    isActiveMeasure = false,
     onClick,
   }: {
     id: string;
@@ -4887,6 +5094,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     isCalibrating?: boolean;
     isFailed?: boolean;
     isAi?: boolean;
+    isActiveMeasure?: boolean;
     onClick: () => void;
   }) => {
     const isFolder = type !== "micrografia";
@@ -4914,7 +5122,16 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           e.stopPropagation();
           onClick();
         }}
-        style={{ paddingLeft: 10, paddingRight: 12 }}
+        style={{
+          paddingLeft: 10,
+          paddingRight: 12,
+          background: isActiveMeasure
+            ? "linear-gradient(90deg, rgba(22,163,74,0.16), rgba(223,241,255,0.72))"
+            : undefined,
+          boxShadow: isActiveMeasure
+            ? "inset 3px 0 0 #16a34a"
+            : undefined,
+        }}
       >
         <div className="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0">
           {isFolder && (
@@ -4934,7 +5151,17 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           </span>
           {type === "micrografia" && companyEnabled !== false && (
             <span
-              title={isCalibrated ? "Calibrada" : isCalibrating ? "Autocalibrando..." : isFailed ? "Fallo IA" : "Sin calibrar"}
+              title={
+                isActiveMeasure
+                  ? "Medicion completada"
+                  : isCalibrated
+                    ? "Calibrada"
+                    : isCalibrating
+                      ? "Autocalibrando..."
+                      : isFailed
+                        ? "Fallo IA"
+                        : "Sin calibrar"
+              }
               style={{
                 marginLeft: 4,
                 display: "inline-flex",
@@ -4942,7 +5169,9 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                 flexShrink: 0,
               }}
             >
-              {isCalibrated ? (
+              {isActiveMeasure ? (
+                <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 5px", borderRadius: 4, background: "rgba(22,163,74,0.15)", border: "1px solid #16a34a", color: "#16a34a", lineHeight: 1 }}>OK</span>
+              ) : isCalibrated ? (
                 isAi ? (
                   <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 4px", borderRadius: 4, background: "rgba(22,163,74,0.15)", border: "1px solid #16a34a", color: "#16a34a", lineHeight: 1 }}>IA</span>
                 ) : (
@@ -5228,6 +5457,9 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                                   isCalibrating={!!calibratingByUrl[mic.url]}
                                   isFailed={!!failedCalibrationByUrl[mic.url]}
                                   isAi={!!calibrationData[mic.url]?.isAi}
+                                  isActiveMeasure={
+                                    activeMicrografiaId === mic.rawId
+                                  }
                                   onClick={() =>
                                     handleClickMicrografia(mic, reg)
                                   }
@@ -5287,6 +5519,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               calibratingByUrl={calibratingByUrl}
               failedCalibrationByUrl={failedCalibrationByUrl}
               calibrationData={calibrationData}
+              highlightedByUrl={highlightedGalleryByUrl}
               onImageClick={(img) => {
                 const isSingleMicroFromTree =
                   galleryView.kind === "micrografias" &&
@@ -5734,6 +5967,9 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             maskLoadingByImageUrl={maskLoadingByImageUrl}
             lastMicrometers={lastMicrometers}
             contextInfo={lightboxContextInfo}
+            measurementOverlayByUrl={measurementOverlayByUrl}
+            measurementOverlayVisibleByUrl={measurementOverlayVisibleByUrl}
+            onToggleMeasurementOverlay={toggleMeasurementOverlay}
             onRetryAutoCalibration={async (url) => {
               try {
                 setCalibratingByUrl((prev) => ({ ...prev, [url]: true }));
