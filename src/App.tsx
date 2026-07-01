@@ -27,11 +27,7 @@ export default function App() {
     return () => window.removeEventListener('auth_logout', handleLogout)
   }, [handleLogout])
 
-  useEffect(() => {
-    if (!isLoggedIn) return
-    connectNotificationsWebSocket(localStorage.getItem('access_token'))
-    return () => disconnectNotificationsWebSocket()
-  }, [isLoggedIn])
+
 
   if (!isLoggedIn) {
     return <LoginScreen onLogin={handleLogin} />

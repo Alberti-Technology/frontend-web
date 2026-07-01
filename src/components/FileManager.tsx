@@ -11,6 +11,8 @@ import { CLOUDINARY_BASE_URL } from "../config/apiConfig";
 import {
   MICROGRAPHY_MEASURE_COMPLETED_EVENT,
   type MicrographyMeasureCompletedEvent,
+  connectNotificationsWebSocket,
+  disconnectNotificationsWebSocket,
 } from "../services/notifications";
 
 const MASK_STORAGE_KEY = "mask_cache_v2_by_micro_id";
@@ -3747,6 +3749,15 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     }
     fetchAll();
   }, [fetchAll, token]);
+
+  useEffect(() => {
+    if (companyEnabled) {
+      connectNotificationsWebSocket(token);
+    } else {
+      disconnectNotificationsWebSocket();
+    }
+    return () => disconnectNotificationsWebSocket();
+  }, [companyEnabled, token]);
 
 
   useEffect(() => {
