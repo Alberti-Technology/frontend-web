@@ -37,15 +37,7 @@ export function connectNotificationsWebSocket(token: string | null) {
   socket = new WebSocket(url.toString());
 
   socket.onopen = () => {
-    window.dispatchEvent(
-      new CustomEvent("show_toast", {
-        detail: {
-          message: "Notificaciones conectadas.",
-          type: "success",
-          duration: 3600,
-        },
-      }),
-    );
+    console.log("[notifications websocket] conectado");
   };
 
   socket.onmessage = (event) => {
@@ -92,5 +84,8 @@ export function disconnectNotificationsWebSocket() {
   const current = socket;
   socket = null;
   current.onclose = null;
+  current.onerror = null;
+  current.onopen = null;
+  current.onmessage = null;
   current.close();
 }

@@ -268,6 +268,7 @@ export interface ApiMicrografia {
   is_ai?: boolean;
   pixel_length?: number;
   micrometers?: number;
+  measure_imagen?: string;
 }
 
 // ==========================================
@@ -1227,6 +1228,22 @@ const MaskIcon = () => (
     <path d="M9 15c.8 1 2 1.5 3 1.5s2.2-.5 3-1.5" />
   </svg>
 );
+const ChartIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M3 3v18h18" />
+    <path d="M7 16l4-4 3 3 6-7" />
+  </svg>
+);
 const ArrowLeftIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -1311,13 +1328,13 @@ function ImageLightboxCarousel({
   contextInfo,
   calibratingByUrl,
   failedCalibrationByUrl,
-  measurementOverlayByUrl,
+  measurementOverlayById,
   measurementOverlayVisibleByUrl,
   onToggleMeasurementOverlay,
   onRetryAutoCalibration,
   onCheckMicrographLimit = (action) => action(),
 }: {
-  images: { name: string; url: string }[];
+  images: { name: string; url: string; id?: string }[];
   initialIndex: number;
   calibrableByUrl: Record<string, boolean>;
   calibrationData: Record<string, CalibrationInfo>;
@@ -1339,7 +1356,7 @@ function ImageLightboxCarousel({
   calibratingByUrl?: Record<string, boolean>;
   failedCalibrationByUrl?: Record<string, boolean>;
   onCheckMicrographLimit?: (action: () => void) => void;
-  measurementOverlayByUrl?: Record<string, string>;
+  measurementOverlayById?: Record<string, string>;
   measurementOverlayVisibleByUrl?: Record<string, boolean>;
   onToggleMeasurementOverlay?: (imageUrl: string) => void;
 }) {
@@ -1413,7 +1430,7 @@ function ImageLightboxCarousel({
   const currentDrawUrl = drawByImageUrl[currentImage.url] || "";
   const currentMaskLabels = maskLabelsByImageUrl[currentImage.url];
   const currentMeasurementOverlayUrl =
-    measurementOverlayByUrl?.[currentImage.url] || "";
+    (currentImage.id && measurementOverlayById?.[currentImage.id]) || "";
   const isMeasurementOverlayVisible =
     !!measurementOverlayVisibleByUrl?.[currentImage.url];
   const displayedImageUrl =
@@ -2349,59 +2366,6 @@ function ImageLightboxCarousel({
                 }}
               />
             ) : null}
-            {currentMeasurementOverlayUrl && (
-              <button
-                type="button"
-                title={
-                  isMeasurementOverlayVisible
-                    ? "Volver a micrografia original"
-                    : "Ver imagen de medicion"
-                }
-                aria-label={
-                  isMeasurementOverlayVisible
-                    ? "Volver a micrografia original"
-                    : "Ver imagen de medicion"
-                }
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleMeasurementOverlay?.(currentImage.url);
-                }}
-                style={{
-                  position: "absolute",
-                  top: showAiFx ? 14 : 10,
-                  right: showAiFx ? 14 : 10,
-                  zIndex: 6,
-                  width: 38,
-                  height: 38,
-                  border: 0,
-                  borderRadius: 10,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  background: isMeasurementOverlayVisible
-                    ? "rgba(22, 163, 74, 0.96)"
-                    : "rgba(255, 255, 255, 0.94)",
-                  color: isMeasurementOverlayVisible ? "white" : "#166534",
-                  boxShadow: "0 5px 16px rgba(0,0,0,0.28)",
-                }}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="19"
-                  height="19"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M3 3v18h18"></path>
-                  <path d="M7 16l4-4 3 3 6-7"></path>
-                </svg>
-              </button>
-            )}
             {maskEditTool && !isMeasurementOverlayVisible && (
               <canvas
                 ref={maskCanvasRef}
@@ -2695,6 +2659,48 @@ function ImageLightboxCarousel({
                 }}
               >
                 <MaskIcon />
+              </button>
+              {/* ---- Chart tool ---- */}
+              <button
+                title={
+                  !currentMeasurementOverlayUrl
+                    ? "Gráfico de medición no disponible"
+                    : isMeasurementOverlayVisible
+                      ? "Ocultar gráfico de medición"
+                      : "Ver gráfico de medición"
+                }
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "50%",
+                  border: "none",
+                  background: isMeasurementOverlayVisible
+                    ? "rgba(51,158,234,0.88)"
+                    : "rgba(0,0,0,0.56)",
+                  color: "white",
+                  cursor: !currentMeasurementOverlayUrl ? "default" : "pointer",
+                  lineHeight: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "background 0.15s",
+                  opacity: currentMeasurementOverlayUrl ? 1 : 0.55,
+                }}
+                disabled={!currentMeasurementOverlayUrl}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleMeasurementOverlay?.(currentImage.url);
+                }}
+                onMouseOver={(e) => {
+                  if (!currentMeasurementOverlayUrl || isMeasurementOverlayVisible) return;
+                  e.currentTarget.style.background = "rgba(51,158,234,0.78)";
+                }}
+                onMouseOut={(e) => {
+                  if (!currentMeasurementOverlayUrl || isMeasurementOverlayVisible) return;
+                  e.currentTarget.style.background = "rgba(0,0,0,0.56)";
+                }}
+              >
+                <ChartIcon />
               </button>
               {/* ---- Pencil tool ---- */}
               <button
@@ -4129,7 +4135,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
   };
 
   // ---- Gallery image list derived from view ----
-  const getGalleryImages = (): { name: string; url: string }[] => {
+  const getGalleryImages = (): { name: string; url: string; id?: string }[] => {
     const v = galleryView;
     switch (v.kind) {
       case "none":
@@ -4147,7 +4153,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       case "single-region":
         return [{ name: v.region.name, url: v.region.image }];
       case "micrografias":
-        return v.images.map((m) => ({ name: m.name, url: m.url }));
+        return v.images.map((m) => ({ name: m.name, url: m.url, id: m.rawId }));
       default:
         return [];
     }
@@ -4185,14 +4191,21 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     return { [activeMicrografiaUrl]: true };
   }, [activeMicrografiaUrl]);
 
-  const measurementOverlayByUrl = useMemo(() => {
-    if (!activeMicrografiaUrl || !activeMeasureEvent?.imagen) {
-      return {} as Record<string, string>;
+  const measurementOverlayById = useMemo(() => {
+    const overlays: Record<string, string> = {};
+    
+    apiMicrografias.forEach((mic) => {
+      if (mic.measure_imagen) {
+        overlays[String(mic.id)] = fixImageUrl(mic.measure_imagen);
+      }
+    });
+
+    if (activeMeasureEvent?.micrografia_id && activeMeasureEvent?.imagen) {
+      overlays[String(activeMeasureEvent.micrografia_id)] = fixImageUrl(activeMeasureEvent.imagen);
     }
-    return {
-      [activeMicrografiaUrl]: fixImageUrl(activeMeasureEvent.imagen),
-    };
-  }, [activeMicrografiaUrl, activeMeasureEvent, fixImageUrl]);
+    
+    return overlays;
+  }, [activeMeasureEvent, apiMicrografias, fixImageUrl]);
 
   const toggleMeasurementOverlay = useCallback((imageUrl: string) => {
     setMeasurementOverlayVisibleByUrl((prev) => ({
@@ -4209,6 +4222,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           const regionImages = reg.micrografias.map((m) => ({
             name: m.name,
             url: m.url,
+            id: m.rawId,
           }));
           reg.micrografias.forEach((mic) => {
             map[mic.url] = regionImages;
@@ -4610,6 +4624,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               rawId: String(mic.id),
               name: mic.nombre,
               url: fixImageUrl(mic.imagen),
+              measurementOverlayById: measurementOverlayById[String(mic.id)],
               umByPx:
                 mic.um_by_px !== undefined && mic.um_by_px !== null
                   ? Number(mic.um_by_px)
@@ -5978,7 +5993,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             maskLoadingByImageUrl={maskLoadingByImageUrl}
             lastMicrometers={lastMicrometers}
             contextInfo={lightboxContextInfo}
-            measurementOverlayByUrl={measurementOverlayByUrl}
+            measurementOverlayById={measurementOverlayById}
             measurementOverlayVisibleByUrl={measurementOverlayVisibleByUrl}
             onToggleMeasurementOverlay={toggleMeasurementOverlay}
             onRetryAutoCalibration={async (url) => {
