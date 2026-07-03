@@ -18,8 +18,30 @@ import {
 const MASK_STORAGE_KEY = "mask_cache_v2_by_micro_id";
 const MASK_LABELS_STORAGE_KEY = "mask_labels_by_micro_id";
 const DRAWINGS_STORAGE_KEY = "draw_cache_v1_by_image_url";
+const VERTICES_STORAGE_KEY = "vertices_cache_v1_by_url";
 
-const autoCalibrateQueue: Array<{ fd: FormData; imageUrl: string }> = [];
+function readVerticesCacheStore(): Record<string, { vertices: number[][]; sourceWidth: number; sourceHeight: number }> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(VERTICES_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeVerticesCacheStore(store: Record<string, { vertices: number[][]; sourceWidth: number; sourceHeight: number }>): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    localStorage.setItem(VERTICES_STORAGE_KEY, JSON.stringify(store));
+    return true;
+  } catch (e) {
+    console.warn("[vertices cache] localStorage quota exceeded, skipping cache write.", e);
+    return false;
+  }
+}
+
+const autoCalibrateQueue: Array<{ fd: FormData; imageUrl: string; sourceWidth: number; sourceHeight: number }> = [];
 let isProcessingCalibrationQueue = false;
 
 const addMicrografiaToAutoCalibrationQueue = (file: Blob, normalizedImageUrl: string) => {
@@ -27,12 +49,34 @@ const addMicrografiaToAutoCalibrationQueue = (file: Blob, normalizedImageUrl: st
   if (typeof window !== "undefined" && localStorage.getItem("company_enabled") !== "true") return;
   const autoCalFd = new FormData();
   autoCalFd.append("file", file, "image.jpg");
-  autoCalibrateQueue.push({
-    fd: autoCalFd,
-    imageUrl: normalizedImageUrl,
-  });
-  window.dispatchEvent(new CustomEvent("calibration_started", { detail: { url: normalizedImageUrl } }));
-  processAutoCalibrateQueue();
+  // Read original image dimensions before sending to API
+  const objectUrl = URL.createObjectURL(file);
+  const tempImg = new Image();
+  tempImg.onload = () => {
+    const w = tempImg.naturalWidth || tempImg.width;
+    const h = tempImg.naturalHeight || tempImg.height;
+    URL.revokeObjectURL(objectUrl);
+    autoCalibrateQueue.push({
+      fd: autoCalFd,
+      imageUrl: normalizedImageUrl,
+      sourceWidth: w,
+      sourceHeight: h,
+    });
+    window.dispatchEvent(new CustomEvent("calibration_started", { detail: { url: normalizedImageUrl } }));
+    processAutoCalibrateQueue();
+  };
+  tempImg.onerror = () => {
+    URL.revokeObjectURL(objectUrl);
+    autoCalibrateQueue.push({
+      fd: autoCalFd,
+      imageUrl: normalizedImageUrl,
+      sourceWidth: 0,
+      sourceHeight: 0,
+    });
+    window.dispatchEvent(new CustomEvent("calibration_started", { detail: { url: normalizedImageUrl } }));
+    processAutoCalibrateQueue();
+  };
+  tempImg.src = objectUrl;
 };
 
 async function processAutoCalibrateQueue() {
@@ -60,6 +104,8 @@ async function processAutoCalibrateQueue() {
             umByPx: data.um_per_pixel,
             isAi: true,
             vertices: data.scale_detection.vertices,
+            sourceWidth: item.sourceWidth,
+            sourceHeight: item.sourceHeight,
           };
           window.dispatchEvent(new CustomEvent("calibration_updated", { detail: { url: item.imageUrl, data: calData } }));
         } else {
@@ -1134,6 +1180,8 @@ interface CalibrationInfo {
   umByPx?: number;
   isAi?: boolean;
   vertices?: number[][];
+  sourceWidth?: number;
+  sourceHeight?: number;
 }
 
 interface ToastNotification {
@@ -1721,10 +1769,10 @@ function ImageLightboxCarousel({
     [],
   );
 
-  // Draw AI calibration box
-  const drawVertices = useCallback((vertices: number[][]) => {
+  // Draw AI calibration box — scale vertices from source image space to canvas space
+  const drawVertices = useCallback((vertices: number[][], sourceWidth?: number, sourceHeight?: number) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || canvas.width === 0 || canvas.height === 0) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const rect = canvas.getBoundingClientRect();
@@ -1733,11 +1781,17 @@ function ImageLightboxCarousel({
     const scale = (scaleX + scaleY) / 2;
     const displayLineWidthPx = 3;
 
+    // Scale factor from source (original file sent to API) to canvas (naturalWidth of displayed image)
+    const sX = (sourceWidth && sourceWidth > 0) ? canvas.width / sourceWidth : 1;
+    const sY = (sourceHeight && sourceHeight > 0) ? canvas.height / sourceHeight : 1;
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.beginPath();
     vertices.forEach((v, i) => {
-      if (i === 0) ctx.moveTo(v[0], v[1]);
-      else ctx.lineTo(v[0], v[1]);
+      const x = v[0] * sX;
+      const y = v[1] * sY;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
     });
     ctx.closePath();
     ctx.strokeStyle = "#339eea";
@@ -1750,10 +1804,16 @@ function ImageLightboxCarousel({
     if (!currentImage) return;
     const data = calibrationData[currentImage.url];
     // Only draw it if we're not currently doing manual calibration/measure and if it's AI
-    if (data?.vertices && data.isAi && !calibrationMode && !isMeasuring) {
-      drawVertices(data.vertices);
+    if (data?.vertices && data.isAi && showAiFx) {
+      drawVertices(data.vertices, data.sourceWidth, data.sourceHeight);
+    } else {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
     }
-  }, [currentIndex, calibrationData, drawVertices, images, calibrationMode, isMeasuring, canvasLayoutCounter]);
+  }, [currentIndex, calibrationData, drawVertices, images, showAiFx, canvasLayoutCounter]);
 
   // Get position relative to the canvas (which matches natural image coords)
   const getCanvasPos = (
@@ -2388,8 +2448,8 @@ function ImageLightboxCarousel({
               ref={canvasRef}
               style={{
                 position: "absolute",
-                top: 0,
-                left: 0,
+                top: showAiFx ? 4 : 0,
+                left: showAiFx ? 4 : 0,
                 display: isMeasurementOverlayVisible ? "none" : "block",
                 cursor: calibrationMode
                   ? lineFinished
@@ -3770,6 +3830,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     const nextCalibrationData: Record<string, CalibrationInfo> = {};
     const nextFailed: Record<string, boolean> = {};
     let rememberedMicrometers = 0;
+    const verticesCache = readVerticesCacheStore();
 
     apiMicrografias.forEach((mic) => {
       const imageUrl = fixImageUrl(mic.imagen);
@@ -3780,12 +3841,20 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       }
 
       if (mic.um_by_px && mic.um_by_px > 0) {
-          nextCalibrationData[imageUrl] = {
+          const calInfo: CalibrationInfo = {
             umByPx: Number(mic.um_by_px),
             isAi: !!mic.is_ai,
             pixelLength: mic.pixel_length ? Number(mic.pixel_length) : 0,
             micrometers: mic.micrometers ? Number(mic.micrometers) : 0,
           };
+          // Merge cached vertices if available for this URL
+          const cached = verticesCache[imageUrl];
+          if (cached && cached.vertices && mic.is_ai) {
+            calInfo.vertices = cached.vertices;
+            calInfo.sourceWidth = cached.sourceWidth;
+            calInfo.sourceHeight = cached.sourceHeight;
+          }
+          nextCalibrationData[imageUrl] = calInfo;
           if (mic.micrometers && mic.micrometers > 0) {
             rememberedMicrometers = Number(mic.micrometers);
           }
@@ -3822,6 +3891,16 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       setCalibrationData((prev) => ({ ...prev, [url]: data }));
       setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
       setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: false }));
+      // Persist vertices to localStorage
+      if (data.vertices && data.vertices.length > 0) {
+        const freshVerticesCache = readVerticesCacheStore();
+        freshVerticesCache[url] = {
+          vertices: data.vertices,
+          sourceWidth: data.sourceWidth || 0,
+          sourceHeight: data.sourceHeight || 0,
+        };
+        writeVerticesCacheStore(freshVerticesCache);
+      }
       // Persist to backend and update local state
       if (info?.rawId && data?.umByPx) {
         const fd = new FormData();
