@@ -886,6 +886,7 @@ function ResponsiveGallery({
   calibratedByUrl,
   calibratingByUrl,
   failedCalibrationByUrl,
+  microMaterialHasModelByUrl = {},
   calibrationData,
   companyEnabled,
   highlightedByUrl,
@@ -896,6 +897,7 @@ function ResponsiveGallery({
   calibratedByUrl: Record<string, boolean>;
   calibratingByUrl?: Record<string, boolean>;
   failedCalibrationByUrl?: Record<string, boolean>;
+  microMaterialHasModelByUrl?: Record<string, boolean>;
   calibrationData?: Record<string, CalibrationInfo>;
   companyEnabled?: boolean;
   highlightedByUrl?: Record<string, boolean>;
@@ -989,6 +991,7 @@ function ResponsiveGallery({
             const isCalibrated = isCalibrable && (!!calibratedByUrl[img.url] || (!!calibrationData?.[img.url]?.umByPx && Number(calibrationData?.[img.url]?.umByPx) > 0));
             const isCalibrating = !!calibratingByUrl?.[img.url];
             const isFailed = !!failedCalibrationByUrl?.[img.url];
+            const hasModel = microMaterialHasModelByUrl?.[img.url] ?? true;
             const isHighlighted = !!highlightedByUrl?.[img.url];
             return (
               <div
@@ -1007,7 +1010,7 @@ function ResponsiveGallery({
                 }}
                 onClick={() => onImageClick(img)}
               >
-                {isCalibrable && companyEnabled !== false && (
+                {isCalibrable && companyEnabled !== false && (hasModel || isCalibrated) && (
                   <div
                     style={{
                       position: "absolute",
@@ -1044,7 +1047,7 @@ function ResponsiveGallery({
                   >
                     <span style={{ lineHeight: 0, display: "inline-flex" }}>
                       {isCalibrated ? (
-                        calibrationData?.[img.url]?.isAi ? (
+                        calibrationData?.[img.url]?.isAi && hasModel ? (
                           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                             <CheckIcon size={11} /> IA
                           </span>
@@ -1053,17 +1056,17 @@ function ResponsiveGallery({
                             <CheckIcon size={11} /> CM
                           </span>
                         )
-                      ) : isCalibrating ? (
+                      ) : isCalibrating && hasModel ? (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> IA
+                          <div style={{width:6,height:6,borderRadius:"50%",background:"white", animation:"pulse 1.5s infinite"}}/> IA
                         </span>
-                      ) : isFailed ? (
+                      ) : isFailed && hasModel ? (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           <AlertIcon size={11} /> IA
                         </span>
                       ) : (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> IA
+                          <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> Sin Calibrar
                         </span>
                       )}
                     </span>
@@ -1341,7 +1344,7 @@ function ImageLightboxCarousel({
   initialIndex,
   calibrableByUrl,
   calibrationData,
-  maskByImageUrl,
+  maskByImageUrl = {},
   maskLabelsByImageUrl,
   maskVisibleByImageUrl,
   maskLoadingByImageUrl,
@@ -1353,11 +1356,13 @@ function ImageLightboxCarousel({
   contextInfo,
   calibratingByUrl,
   failedCalibrationByUrl,
+  microMaterialHasModelByUrl = {},
   measurementOverlayById,
   measurementOverlayVisibleByUrl,
   onToggleMeasurementOverlay,
   onRetryAutoCalibration,
   onCheckMicrographLimit = (action) => action(),
+  pushToast,
 }: {
   images: { name: string; url: string; id?: string }[];
   initialIndex: number;
@@ -1380,10 +1385,12 @@ function ImageLightboxCarousel({
   onRetryAutoCalibration?: (imageUrl: string) => void;
   calibratingByUrl?: Record<string, boolean>;
   failedCalibrationByUrl?: Record<string, boolean>;
+  microMaterialHasModelByUrl?: Record<string, boolean>;
   onCheckMicrographLimit?: (action: () => void) => void;
   measurementOverlayById?: Record<string, string>;
   measurementOverlayVisibleByUrl?: Record<string, boolean>;
   onToggleMeasurementOverlay?: (imageUrl: string) => void;
+  pushToast: (message: string, type?: "success" | "error" | "info" | "warning", duration?: number) => void;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [calibrationMode, setCalibrationMode] = useState(false);
@@ -1498,10 +1505,11 @@ function ImageLightboxCarousel({
       : null;
   // Derive AI UI state early so we can account for border padding in layout
   const isExternallyCalibrating = calibratingByUrl?.[currentImage.url];
+  const currentMaterialHasModel = microMaterialHasModelByUrl[currentImage.url] ?? true;
   const isExternallyFailed = failedCalibrationByUrl?.[currentImage.url];
-  const aiSuccess = hasCalibration && calibrationData[currentImage.url]?.isAi === true;
-  const aiError = isExternallyFailed;
-  const aiProcessing = isExternallyCalibrating;
+  const aiSuccess = hasCalibration && calibrationData[currentImage.url]?.isAi === true && currentMaterialHasModel;
+  const aiError = isExternallyFailed && currentMaterialHasModel;
+  const aiProcessing = isExternallyCalibrating && currentMaterialHasModel;
   const showAiFx = (aiSuccess || aiError || aiProcessing) && !calibrationMode && !measurementMode && !isDrawingToolActive;
   let aiFxColor = "#4ade80"; // green
   if (aiError) aiFxColor = "#f87171"; // red
@@ -2588,6 +2596,10 @@ function ImageLightboxCarousel({
                 disabled={!!calibratingByUrl?.[currentImage.url] || !onRetryAutoCalibration}
                 onClick={() => onCheckMicrographLimit(() => {
                   if (!currentImage?.url || !!calibratingByUrl?.[currentImage.url] || !onRetryAutoCalibration) return;
+                  if (!(microMaterialHasModelByUrl[currentImage.url] ?? true)) {
+                    pushToast("Material no soportado.", "error", 5000);
+                    return;
+                  }
                   onRetryAutoCalibration(currentImage.url);
                 })}
                 onMouseOver={(e) => {
@@ -4276,6 +4288,40 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     return map;
   }, [apiMateriales, apiMuestras, apiRegiones, apiMicrografias, fixImageUrl]);
 
+  const microMaterialHasModelByUrl = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    apiMateriales.forEach((apiMat) => {
+      const hasModel = !!apiMat.has_model;
+      const muestrasOfMat = apiMuestras.filter(
+        (mue) => String(mue.material) === String(apiMat.id),
+      );
+      muestrasOfMat.forEach((mue) => {
+        const regionsOfMue = apiRegiones.filter(
+          (r) => String(r.muestra) === String(mue.id),
+        );
+        regionsOfMue.forEach((reg) => {
+          const microsOfReg = apiMicrografias.filter(
+            (mic) => String(mic.region) === String(reg.id),
+          );
+          microsOfReg.forEach((mic) => {
+            const url = fixImageUrl(mic.imagen);
+            map[url] = hasModel;
+          });
+        });
+      });
+    });
+    return map;
+  }, [apiMateriales, apiMuestras, apiRegiones, apiMicrografias, fixImageUrl]);
+
+  const getMaterialHasModelByRegionId = useCallback((regionId: string) => {
+    const reg = apiRegiones.find(r => String(r.id) === regionId);
+    if (!reg) return false;
+    const mue = apiMuestras.find(m => String(m.id) === String(reg.muestra));
+    if (!mue) return false;
+    const mat = apiMateriales.find(m => String(m.id) === String(mue.material));
+    return !!mat?.has_model;
+  }, [apiRegiones, apiMuestras, apiMateriales]);
+
   // ---- Helper: recursively collect children IDs for removal ----
   const getChildIds = (
     mat: Material,
@@ -4560,7 +4606,10 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             const rawFile = fds[i].get("imagen");
             const normalizedUrl = fixImageUrl(apiRes?.imagen);
             if (rawFile instanceof Blob && normalizedUrl) {
-              addMicrografiaToAutoCalibrationQueue(rawFile, normalizedUrl);
+              const regionId = String(fds[i].get("region") || "");
+              if (getMaterialHasModelByRegionId(regionId)) {
+                addMicrografiaToAutoCalibrationQueue(rawFile, normalizedUrl);
+              }
             }
           } catch (e) {
             errors++;
@@ -4599,7 +4648,10 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           const rawFile = fd.get("imagen");
           const normalizedUrl = fixImageUrl(apiRes?.imagen);
           if (rawFile instanceof Blob && normalizedUrl) {
-            addMicrografiaToAutoCalibrationQueue(rawFile, normalizedUrl);
+            const regionId = String(fd.get("region") || "");
+            if (getMaterialHasModelByRegionId(regionId)) {
+              addMicrografiaToAutoCalibrationQueue(rawFile, normalizedUrl);
+            }
           }
         }
       }
@@ -4960,6 +5012,12 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         return;
       }
 
+      const hasModel = microMaterialHasModelByUrl[imageUrl] ?? true;
+      if (!hasModel) {
+        pushToast("Material no soportado.", "error", 5000);
+        return;
+      }
+
       const hasMaskLoaded = !!maskByImageUrl[imageUrl];
       if (hasMaskLoaded) {
         const labelsCache = readMaskLabelsCacheStore();
@@ -5119,6 +5177,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     isCalibrating = false,
     isFailed = false,
     isAi = false,
+    hasModel = true,
     onClick,
   }: {
     id: string;
@@ -5129,6 +5188,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     isCalibrating?: boolean;
     isFailed?: boolean;
     isAi?: boolean;
+    hasModel?: boolean;
     onClick: () => void;
   }) => {
     const isFolder = type !== "micrografia";
@@ -5177,7 +5237,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           >
             {name}
           </span>
-          {type === "micrografia" && companyEnabled !== false && (
+          {type === "micrografia" && companyEnabled !== false && (hasModel || isCalibrated) && (
             <span
               title={
                 isCalibrated
@@ -5478,9 +5538,10 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                                     (!!mic.umByPx && Number(mic.umByPx) > 0) ||
                                     (!!calibrationData[mic.url]?.umByPx && Number(calibrationData[mic.url]?.umByPx) > 0)
                                   }
-                                  isCalibrating={!!calibratingByUrl[mic.url]}
-                                  isFailed={!!failedCalibrationByUrl[mic.url]}
-                                  isAi={!!calibrationData[mic.url]?.isAi}
+                                  isCalibrating={!!calibratingByUrl[mic.url] && (microMaterialHasModelByUrl[mic.url] ?? true)}
+                                  isFailed={!!failedCalibrationByUrl[mic.url] && (microMaterialHasModelByUrl[mic.url] ?? true)}
+                                  isAi={!!calibrationData[mic.url]?.isAi && (microMaterialHasModelByUrl[mic.url] ?? true)}
+                                  hasModel={microMaterialHasModelByUrl[mic.url] ?? true}
                                   onClick={() =>
                                     handleClickMicrografia(mic, reg)
                                   }
@@ -5540,6 +5601,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               calibratingByUrl={calibratingByUrl}
               failedCalibrationByUrl={failedCalibrationByUrl}
               calibrationData={calibrationData}
+              microMaterialHasModelByUrl={microMaterialHasModelByUrl}
               highlightedByUrl={{} as Record<string, boolean>}
               onImageClick={(img) => {
                 const isSingleMicroFromTree =
@@ -5982,6 +6044,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             calibrationData={calibrationData}
             calibratingByUrl={calibratingByUrl}
             failedCalibrationByUrl={failedCalibrationByUrl}
+            microMaterialHasModelByUrl={microMaterialHasModelByUrl}
             maskByImageUrl={maskByImageUrl}
             maskLabelsByImageUrl={maskLabelsByImageUrl}
             maskVisibleByImageUrl={maskVisibleByImageUrl}
@@ -5991,6 +6054,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             measurementOverlayById={measurementOverlayById}
             measurementOverlayVisibleByUrl={measurementOverlayVisibleByUrl}
             onToggleMeasurementOverlay={toggleMeasurementOverlay}
+            pushToast={pushToast}
             onRetryAutoCalibration={async (url) => {
               try {
                 setCalibratingByUrl((prev) => ({ ...prev, [url]: true }));
