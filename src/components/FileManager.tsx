@@ -4138,6 +4138,15 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         ...prev,
         [microId]: payload,
       }));
+      
+      if (payload?.status === "completed") {
+        if (payload?.is_valid) {
+          window.dispatchEvent(new CustomEvent("show_toast", { detail: { message: "Gráfico procesado correctamente", type: "success" } }));
+        } else if (payload?.is_valid === false) {
+          window.dispatchEvent(new CustomEvent("show_toast", { detail: { message: "Error al procesar el gráfico", type: "error" } }));
+        }
+      }
+      
       missingActiveMicrografiaRefreshRef.current = null;
       void fetchAll();
     };
@@ -5885,7 +5894,10 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                       gap: PDF_SELECTOR_ITEM_GAP,
                     }}
                   >
-                    {apiMuestras.map((mue) => {
+                    {apiMuestras.filter((mue) => {
+                      const mat = apiMateriales.find(m => String(m.id) === String(mue.material));
+                      return !!mat?.has_model;
+                    }).map((mue) => {
                       const muestraId = String(mue.id);
                       const isSelected = selectedPdfMuestraId === muestraId;
                       const isLocked =
