@@ -17,7 +17,11 @@ export default defineConfig({
       '/reports': 'http://localhost:8000',
       '/media': 'http://localhost:8000',
       '/admin': 'http://localhost:8000',
-      '/static': 'http://localhost:8000'
+      '/static': 'http://localhost:8000',
+      '/ws': {
+        target: 'http://localhost:8000',
+        ws: true
+      }
     }
   },
 })

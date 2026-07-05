@@ -15,8 +15,10 @@ export interface MicrographyMeasureCompletedEvent {
 export const MICROGRAPHY_MEASURE_COMPLETED_EVENT =
   "micrography_measure_completed";
 
-const NOTIFICATIONS_WS_URL =
-  "ws://127.0.0.1:8000/ws/metalografia/notifications/";
+import { API_BASE_URL } from "../config/apiConfig";
+
+const wsBaseUrl = API_BASE_URL.replace(/^http/, "ws");
+const NOTIFICATIONS_WS_URL = `${wsBaseUrl}ws/metalografia/notifications/`;
 
 let socket: WebSocket | null = null;
 
