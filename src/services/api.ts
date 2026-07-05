@@ -315,11 +315,17 @@ export async function login(user: string, pass: string): Promise<string> {
         localStorage.setItem("refresh_token", data.refresh || "");
         localStorage.setItem("user_id", data.user_id?.toString() || "");
         localStorage.setItem("username", data.username || user);
+        localStorage.setItem("company_enabled", data.company_enabled ? "true" : "false");
         return token;
       }
     }
 
     // Manejar errores específicos del servidor
+    if (res.status === 423) {
+      document.body.innerHTML = '<div style="background:#b42318;color:white;font-family:sans-serif;height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:2rem;"><div><h1 style="font-size:3rem;margin-bottom:1rem">ACCESO BLOQUEADO</h1><p style="font-size:1.2rem">Se ha detectado un intento de inicio de sesión sospechoso o desde otro dispositivo no autorizado.<br/><br/>Por razones de seguridad, esta aplicación ha sido bloqueada. Contactá al administrador.</p></div></div>';
+      return "";
+    }
+
     if (res.status === 403) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || "Tu cuenta ha sido desactivada");
@@ -333,6 +339,15 @@ export async function login(user: string, pass: string): Promise<string> {
 }
 
 export function logout() {
+  const refreshToken = localStorage.getItem("refresh_token");
+  if (refreshToken) {
+    apiFetch("member/logout/", {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({ refresh: refreshToken }),
+    }).catch(() => {});
+  }
+
   localStorage.removeItem("access_token");
   localStorage.removeItem("refresh_token");
   localStorage.removeItem("token");        // limpieza legacy
@@ -406,6 +421,16 @@ export async function getMateriales(): Promise<ApiMaterial[]> {
 // -------------------------------------------------------------
 
 // MUESTRAS
+export async function createMaterial(formData: FormData) {
+  const res = await apiFetchWithAuth("metalografia/material/", {
+    method: "POST",
+    headers: getHeaders(true),
+    body: formData,
+  });
+  if (!res.ok) throw new Error("Error creando material");
+  return res.json();
+}
+
 export async function createMuestra(formData: FormData) {
   const res = await apiFetchWithAuth("metalografia/muestras/", {
     method: "POST",
@@ -818,4 +843,19 @@ export async function getReportInfo(reportId: string | number) {
   });
   if (!res.ok) throw new Error("Error fetching report");
   return res.json();
+}
+
+export async function getCompanyStatus(): Promise<boolean> {
+  try {
+    const res = await apiFetchWithAuth("member/company/status/", {
+      headers: getHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.is_enabled;
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return true;
 }

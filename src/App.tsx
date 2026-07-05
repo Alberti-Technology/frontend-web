@@ -3,6 +3,10 @@ import LoginScreen from './components/LoginScreen'
 import FileManager from './components/FileManager'
 import Sidebar from './components/Sidebar'
 import * as api from './services/api'
+import {
+  connectNotificationsWebSocket,
+  disconnectNotificationsWebSocket,
+} from './services/notifications'
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(
@@ -14,6 +18,7 @@ export default function App() {
   }, [])
 
   const handleLogout = useCallback(() => {
+    disconnectNotificationsWebSocket()
     setIsLoggedIn(false)
   }, [])
 
@@ -21,6 +26,8 @@ export default function App() {
     window.addEventListener('auth_logout', handleLogout)
     return () => window.removeEventListener('auth_logout', handleLogout)
   }, [handleLogout])
+
+
 
   if (!isLoggedIn) {
     return <LoginScreen onLogin={handleLogin} />

@@ -8,24 +8,75 @@ import React, {
 import { createPortal } from "react-dom";
 import * as api from "../services/api";
 import { CLOUDINARY_BASE_URL } from "../config/apiConfig";
+import {
+  MICROGRAPHY_MEASURE_COMPLETED_EVENT,
+  type MicrographyMeasureCompletedEvent,
+  connectNotificationsWebSocket,
+  disconnectNotificationsWebSocket,
+} from "../services/notifications";
 
 const MASK_STORAGE_KEY = "mask_cache_v2_by_micro_id";
 const MASK_LABELS_STORAGE_KEY = "mask_labels_by_micro_id";
 const DRAWINGS_STORAGE_KEY = "draw_cache_v1_by_image_url";
+const VERTICES_STORAGE_KEY = "vertices_cache_v1_by_url";
 
-const autoCalibrateQueue: Array<{ fd: FormData; imageUrl: string }> = [];
+function readVerticesCacheStore(): Record<string, { vertices: number[][]; sourceWidth: number; sourceHeight: number }> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(VERTICES_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeVerticesCacheStore(store: Record<string, { vertices: number[][]; sourceWidth: number; sourceHeight: number }>): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    localStorage.setItem(VERTICES_STORAGE_KEY, JSON.stringify(store));
+    return true;
+  } catch (e) {
+    console.warn("[vertices cache] localStorage quota exceeded, skipping cache write.", e);
+    return false;
+  }
+}
+
+const autoCalibrateQueue: Array<{ fd: FormData; imageUrl: string; sourceWidth: number; sourceHeight: number }> = [];
 let isProcessingCalibrationQueue = false;
 
 const addMicrografiaToAutoCalibrationQueue = (file: Blob, normalizedImageUrl: string) => {
   if (!file || !normalizedImageUrl) return;
+  if (typeof window !== "undefined" && localStorage.getItem("company_enabled") !== "true") return;
   const autoCalFd = new FormData();
   autoCalFd.append("file", file, "image.jpg");
-  autoCalibrateQueue.push({
-    fd: autoCalFd,
-    imageUrl: normalizedImageUrl,
-  });
-  window.dispatchEvent(new CustomEvent("calibration_started", { detail: { url: normalizedImageUrl } }));
-  processAutoCalibrateQueue();
+  // Read original image dimensions before sending to API
+  const objectUrl = URL.createObjectURL(file);
+  const tempImg = new Image();
+  tempImg.onload = () => {
+    const w = tempImg.naturalWidth || tempImg.width;
+    const h = tempImg.naturalHeight || tempImg.height;
+    URL.revokeObjectURL(objectUrl);
+    autoCalibrateQueue.push({
+      fd: autoCalFd,
+      imageUrl: normalizedImageUrl,
+      sourceWidth: w,
+      sourceHeight: h,
+    });
+    window.dispatchEvent(new CustomEvent("calibration_started", { detail: { url: normalizedImageUrl } }));
+    processAutoCalibrateQueue();
+  };
+  tempImg.onerror = () => {
+    URL.revokeObjectURL(objectUrl);
+    autoCalibrateQueue.push({
+      fd: autoCalFd,
+      imageUrl: normalizedImageUrl,
+      sourceWidth: 0,
+      sourceHeight: 0,
+    });
+    window.dispatchEvent(new CustomEvent("calibration_started", { detail: { url: normalizedImageUrl } }));
+    processAutoCalibrateQueue();
+  };
+  tempImg.src = objectUrl;
 };
 
 async function processAutoCalibrateQueue() {
@@ -52,6 +103,9 @@ async function processAutoCalibrateQueue() {
             micrometers: micrometers || 1,
             umByPx: data.um_per_pixel,
             isAi: true,
+            vertices: data.scale_detection.vertices,
+            sourceWidth: item.sourceWidth,
+            sourceHeight: item.sourceHeight,
           };
           window.dispatchEvent(new CustomEvent("calibration_updated", { detail: { url: item.imageUrl, data: calData } }));
         } else {
@@ -260,6 +314,7 @@ export interface ApiMicrografia {
   is_ai?: boolean;
   pixel_length?: number;
   micrometers?: number;
+  measure_imagen?: string;
 }
 
 // ==========================================
@@ -640,7 +695,7 @@ function CreateModal({
   onCancel,
 }: {
   parentId: string | number;
-  type: "muestra" | "region" | "micrografia";
+  type: "material" | "muestra" | "region" | "micrografia";
   onConfirm: (fds: FormData[]) => void;
   onCancel: () => void;
 }) {
@@ -654,6 +709,7 @@ function CreateModal({
 
   // Helper title
   const titles = {
+    material: "Añadir nuevo Material",
     muestra: "Añadir nueva Muestra",
     region: "Añadir nueva Región",
     micrografia: "Añadir Micrografías",
@@ -681,8 +737,8 @@ function CreateModal({
         setLoading(false);
       }
     } else {
-      if (!name.trim() || !file) {
-        setValidationError("Nombre e imagen son requeridos.");
+      if (!name.trim() || (type !== "material" && !file)) {
+        setValidationError(type === "material" ? "Nombre es requerido." : "Nombre e imagen son requeridos.");
         return;
       }
       setLoading(true);
@@ -690,7 +746,9 @@ function CreateModal({
       try {
         const fd = new FormData();
         fd.append("nombre", name.trim());
-        fd.append("imagen", file);
+        if (file) {
+          fd.append("imagen", file);
+        }
         if (type === "muestra") {
           fd.append("informacion", info.trim());
           fd.append("material", String(parentId));
@@ -759,33 +817,35 @@ function CreateModal({
               />
             </div>
           )}
-          <div>
-            <label className="block text-xs font-semibold text-[#10243f] mb-2">
-              {isBulk ? `Imágenes (${files.length} seleccionadas)` : "Imagen"}
-            </label>
-            {isBulk ? (
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={(e) => {
-                  setFiles(Array.from(e.target.files || []));
-                  if (validationError) setValidationError(null);
-                }}
-                className="w-full text-sm text-[#4d6684] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#eef8ff] file:text-[#339eea] hover:file:bg-[#dff1ff] transition"
-              />
-            ) : (
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  setFile(e.target.files?.[0] || null);
-                  if (validationError) setValidationError(null);
-                }}
-                className="w-full text-sm text-[#4d6684] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#eef8ff] file:text-[#339eea] hover:file:bg-[#dff1ff] transition"
-              />
-            )}
-          </div>
+          {type !== "material" && (
+            <div>
+              <label className="block text-xs font-semibold text-[#10243f] mb-2">
+                {isBulk ? `Imágenes (${files.length} seleccionadas)` : "Imagen"}
+              </label>
+              {isBulk ? (
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  multiple
+                  onChange={(e) => {
+                    setFiles(Array.from(e.target.files || []));
+                    if (validationError) setValidationError(null);
+                  }}
+                  className="w-full text-sm text-[#4d6684] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#eef8ff] file:text-[#339eea] hover:file:bg-[#dff1ff] transition"
+                />
+              ) : (
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  onChange={(e) => {
+                    setFile(e.target.files?.[0] || null);
+                    if (validationError) setValidationError(null);
+                  }}
+                  className="w-full text-sm text-[#4d6684] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#eef8ff] file:text-[#339eea] hover:file:bg-[#dff1ff] transition"
+                />
+              )}
+            </div>
+          )}
           {validationError && (
             <p className="m-0 text-[12px] font-semibold text-[#b42318]">
               {validationError}
@@ -826,7 +886,10 @@ function ResponsiveGallery({
   calibratedByUrl,
   calibratingByUrl,
   failedCalibrationByUrl,
+  microMaterialHasModelByUrl = {},
   calibrationData,
+  companyEnabled,
+  highlightedByUrl,
   onImageClick,
 }: {
   images: { name: string; url: string }[];
@@ -834,7 +897,10 @@ function ResponsiveGallery({
   calibratedByUrl: Record<string, boolean>;
   calibratingByUrl?: Record<string, boolean>;
   failedCalibrationByUrl?: Record<string, boolean>;
+  microMaterialHasModelByUrl?: Record<string, boolean>;
   calibrationData?: Record<string, CalibrationInfo>;
+  companyEnabled?: boolean;
+  highlightedByUrl?: Record<string, boolean>;
   onImageClick: (img: { name: string; url: string }) => void;
 }) {
   const count = images.length;
@@ -925,10 +991,12 @@ function ResponsiveGallery({
             const isCalibrated = isCalibrable && (!!calibratedByUrl[img.url] || (!!calibrationData?.[img.url]?.umByPx && Number(calibrationData?.[img.url]?.umByPx) > 0));
             const isCalibrating = !!calibratingByUrl?.[img.url];
             const isFailed = !!failedCalibrationByUrl?.[img.url];
+            const hasModel = microMaterialHasModelByUrl?.[img.url] ?? true;
+            const isHighlighted = !!highlightedByUrl?.[img.url];
             return (
               <div
                 key={`${img.url}-${i}`}
-                className="rounded-xl overflow-hidden border border-[#10243f14] cursor-zoom-in group relative shadow-sm hover:shadow-lg transition-all"
+                className="rounded-xl overflow-hidden cursor-zoom-in group relative transition-all"
                 style={{
                   width: "100%",
                   height: "auto",
@@ -937,10 +1005,12 @@ function ResponsiveGallery({
                   aspectRatio: cardAspectRatio,
                   overflow: "hidden",
                   background: "#f0f4f8",
+                  border: "1px solid rgba(16,36,63,0.08)",
+                  boxShadow: "0 1px 3px rgba(16,36,63,0.08)",
                 }}
                 onClick={() => onImageClick(img)}
               >
-                {isCalibrable && (
+                {isCalibrable && companyEnabled !== false && (hasModel || isCalibrated) && (
                   <div
                     style={{
                       position: "absolute",
@@ -977,7 +1047,7 @@ function ResponsiveGallery({
                   >
                     <span style={{ lineHeight: 0, display: "inline-flex" }}>
                       {isCalibrated ? (
-                        calibrationData?.[img.url]?.isAi ? (
+                        calibrationData?.[img.url]?.isAi && hasModel ? (
                           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                             <CheckIcon size={11} /> IA
                           </span>
@@ -986,17 +1056,17 @@ function ResponsiveGallery({
                             <CheckIcon size={11} /> CM
                           </span>
                         )
-                      ) : isCalibrating ? (
+                      ) : isCalibrating && hasModel ? (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> IA
+                          <div style={{width:6,height:6,borderRadius:"50%",background:"white", animation:"pulse 1.5s infinite"}}/> IA
                         </span>
-                      ) : isFailed ? (
+                      ) : isFailed && hasModel ? (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           <AlertIcon size={11} /> IA
                         </span>
                       ) : (
                         <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> IA
+                          <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> Sin Calibrar
                         </span>
                       )}
                     </span>
@@ -1089,6 +1159,9 @@ interface CalibrationInfo {
   height?: number;
   umByPx?: number;
   isAi?: boolean;
+  vertices?: number[][];
+  sourceWidth?: number;
+  sourceHeight?: number;
 }
 
 interface ToastNotification {
@@ -1183,6 +1256,22 @@ const MaskIcon = () => (
     <path d="M9 15c.8 1 2 1.5 3 1.5s2.2-.5 3-1.5" />
   </svg>
 );
+const ChartIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M3 3v18h18" />
+    <path d="M7 16l4-4 3 3 6-7" />
+  </svg>
+);
 const ArrowLeftIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -1255,7 +1344,7 @@ function ImageLightboxCarousel({
   initialIndex,
   calibrableByUrl,
   calibrationData,
-  maskByImageUrl,
+  maskByImageUrl = {},
   maskLabelsByImageUrl,
   maskVisibleByImageUrl,
   maskLoadingByImageUrl,
@@ -1267,9 +1356,15 @@ function ImageLightboxCarousel({
   contextInfo,
   calibratingByUrl,
   failedCalibrationByUrl,
+  microMaterialHasModelByUrl = {},
+  measurementOverlayById,
+  measurementOverlayVisibleByUrl,
+  onToggleMeasurementOverlay,
   onRetryAutoCalibration,
+  onCheckMicrographLimit = (action) => action(),
+  pushToast,
 }: {
-  images: { name: string; url: string }[];
+  images: { name: string; url: string; id?: string }[];
   initialIndex: number;
   calibrableByUrl: Record<string, boolean>;
   calibrationData: Record<string, CalibrationInfo>;
@@ -1290,6 +1385,12 @@ function ImageLightboxCarousel({
   onRetryAutoCalibration?: (imageUrl: string) => void;
   calibratingByUrl?: Record<string, boolean>;
   failedCalibrationByUrl?: Record<string, boolean>;
+  microMaterialHasModelByUrl?: Record<string, boolean>;
+  onCheckMicrographLimit?: (action: () => void) => void;
+  measurementOverlayById?: Record<string, string>;
+  measurementOverlayVisibleByUrl?: Record<string, boolean>;
+  onToggleMeasurementOverlay?: (imageUrl: string) => void;
+  pushToast: (message: string, type?: "success" | "error" | "info" | "warning", duration?: number) => void;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [calibrationMode, setCalibrationMode] = useState(false);
@@ -1312,6 +1413,7 @@ function ImageLightboxCarousel({
   } | null>(null);
   const [isMeasuring, setIsMeasuring] = useState(false);
   const [lineFinished, setLineFinished] = useState(false);
+  const [canvasLayoutCounter, setCanvasLayoutCounter] = useState(0);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showInputModal, setShowInputModal] = useState(false);
   const [showAutoDetectModal, setShowAutoDetectModal] = useState(false);
@@ -1359,6 +1461,14 @@ function ImageLightboxCarousel({
   const currentMaskUrl = maskByImageUrl[currentImage.url] || "";
   const currentDrawUrl = drawByImageUrl[currentImage.url] || "";
   const currentMaskLabels = maskLabelsByImageUrl[currentImage.url];
+  const currentMeasurementOverlayUrl =
+    (currentImage.id && measurementOverlayById?.[currentImage.id]) || "";
+  const isMeasurementOverlayVisible =
+    !!measurementOverlayVisibleByUrl?.[currentImage.url];
+  const displayedImageUrl =
+    currentMeasurementOverlayUrl && isMeasurementOverlayVisible
+      ? currentMeasurementOverlayUrl
+      : currentImage.url;
   const isMaskVisible =
     !!currentMaskUrl && maskVisibleByImageUrl[currentImage.url] !== false;
   const isMaskLoading = !!maskLoadingByImageUrl[currentImage.url];
@@ -1395,10 +1505,11 @@ function ImageLightboxCarousel({
       : null;
   // Derive AI UI state early so we can account for border padding in layout
   const isExternallyCalibrating = calibratingByUrl?.[currentImage.url];
+  const currentMaterialHasModel = microMaterialHasModelByUrl[currentImage.url] ?? true;
   const isExternallyFailed = failedCalibrationByUrl?.[currentImage.url];
-  const aiSuccess = hasCalibration && calibrationData[currentImage.url]?.isAi === true;
-  const aiError = isExternallyFailed;
-  const aiProcessing = isExternallyCalibrating;
+  const aiSuccess = hasCalibration && calibrationData[currentImage.url]?.isAi === true && currentMaterialHasModel;
+  const aiError = isExternallyFailed && currentMaterialHasModel;
+  const aiProcessing = isExternallyCalibrating && currentMaterialHasModel;
   const showAiFx = (aiSuccess || aiError || aiProcessing) && !calibrationMode && !measurementMode && !isDrawingToolActive;
   let aiFxColor = "#4ade80"; // green
   if (aiError) aiFxColor = "#f87171"; // red
@@ -1406,7 +1517,7 @@ function ImageLightboxCarousel({
 
   const LIGHTBOX_SIDE_MIN = 40;
   const MIN_CONTEXT_WIDTH = 280;
-  const borderPad = showAiFx ? 8 : 0;
+  const borderPad = showAiFx ? 8 : 0; // reserve space for the animated border
   const imageMaxWidth = Math.max(
     260,
     editorLayout.viewportWidth - LIGHTBOX_SIDE_MIN - MIN_CONTEXT_WIDTH - borderPad,
@@ -1496,6 +1607,8 @@ function ImageLightboxCarousel({
     setShowInputModal(false);
     setShowAutoDetectModal(false);
     setIsMaskDrawing(false);
+    setShowAutoDetectModal(false);
+    setIsMaskDrawing(false);
     clearCanvas();
 
     // If the user was using a drawing tool or viewing the mask panel,
@@ -1535,6 +1648,7 @@ function ImageLightboxCarousel({
     setIsMeasuring(false);
     setShowConfirmModal(false);
     setShowInputModal(false);
+    setShowAutoDetectModal(false);
     setShowAutoDetectModal(false);
     setMaskEditTool(null);
     setIsMaskDrawing(false);
@@ -1591,6 +1705,7 @@ function ImageLightboxCarousel({
     canvas.style.width = img.clientWidth + "px";
     canvas.style.height = img.clientHeight + "px";
     syncEditorLayout();
+    setCanvasLayoutCounter(c => c + 1);
   }, [syncEditorLayout]);
 
   useEffect(() => {
@@ -1635,16 +1750,55 @@ function ImageLightboxCarousel({
       ctx.lineWidth = displayLineWidthPx * scale;
       ctx.lineCap = "round";
       ctx.stroke();
-      // Draw start/end dots
-      [start, end].forEach((p) => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, displayPointRadiusPx * scale, 0, Math.PI * 2);
-        ctx.fillStyle = "#ff3333";
-        ctx.fill();
-      });
     },
     [],
   );
+
+  // Draw AI calibration box — scale vertices from source image space to canvas space
+  const drawVertices = useCallback((vertices: number[][], sourceWidth?: number, sourceHeight?: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas || canvas.width === 0 || canvas.height === 0) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+    const scale = (scaleX + scaleY) / 2;
+    const displayLineWidthPx = 3;
+
+    // Scale factor from source (original file sent to API) to canvas (naturalWidth of displayed image)
+    const sX = (sourceWidth && sourceWidth > 0) ? canvas.width / sourceWidth : 1;
+    const sY = (sourceHeight && sourceHeight > 0) ? canvas.height / sourceHeight : 1;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    vertices.forEach((v, i) => {
+      const x = v[0] * sX;
+      const y = v[1] * sY;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = "#339eea";
+    ctx.lineWidth = displayLineWidthPx * scale;
+    ctx.stroke();
+  }, []);
+
+  useEffect(() => {
+    const currentImage = images[currentIndex];
+    if (!currentImage) return;
+    const data = calibrationData[currentImage.url];
+    // Only draw it if we're not currently doing manual calibration/measure and if it's AI
+    if (data?.vertices && data.isAi && showAiFx) {
+      drawVertices(data.vertices, data.sourceWidth, data.sourceHeight);
+    } else {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+  }, [currentIndex, calibrationData, drawVertices, images, showAiFx, canvasLayoutCounter]);
 
   // Get position relative to the canvas (which matches natural image coords)
   const getCanvasPos = (
@@ -2220,8 +2374,12 @@ function ImageLightboxCarousel({
             )}
             <img
               ref={imgRef}
-              src={currentImage.url}
-              alt={currentImage.name}
+              src={displayedImageUrl}
+              alt={
+                isMeasurementOverlayVisible
+                  ? `Medicion de ${currentImage.name}`
+                  : currentImage.name
+              }
               draggable={false}
               onLoad={syncCanvasSize}
               style={{
@@ -2233,7 +2391,7 @@ function ImageLightboxCarousel({
                 zIndex: showAiFx ? 1 : "auto",
               }}
             />
-            {currentMaskUrl ? (
+            {currentMaskUrl && !isMeasurementOverlayVisible ? (
               <img
                 src={currentMaskUrl}
                 alt={`Mascara de ${currentImage.name}`}
@@ -2253,7 +2411,7 @@ function ImageLightboxCarousel({
                 }}
               />
             ) : null}
-            {maskEditTool && (
+            {maskEditTool && !isMeasurementOverlayVisible && (
               <canvas
                 ref={maskCanvasRef}
                 style={{
@@ -2263,6 +2421,7 @@ function ImageLightboxCarousel({
                   borderRadius: 8,
                   opacity: 1,
                   cursor: maskEditTool === "pencil" ? "crosshair" : "cell",
+                  zIndex: 2,
                 }}
                 onMouseDown={handleMaskCanvasMouseDown}
                 onMouseMove={handleMaskCanvasMouseMove}
@@ -2270,19 +2429,21 @@ function ImageLightboxCarousel({
                 onMouseLeave={handleMaskCanvasMouseLeave}
               />
             )}
-            {(calibrationMode || measurementMode) && (
-              <canvas
-                ref={canvasRef}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  cursor: calibrationMode
-                    ? lineFinished
-                      ? "default"
-                      : "crosshair"
-                    : "crosshair",
-                }}
+            <canvas
+              ref={canvasRef}
+              style={{
+                position: "absolute",
+                top: showAiFx ? 4 : 0,
+                left: showAiFx ? 4 : 0,
+                display: isMeasurementOverlayVisible ? "none" : "block",
+                cursor: calibrationMode
+                  ? lineFinished
+                    ? "default"
+                    : "crosshair"
+                  : measurementMode ? "crosshair" : "default",
+                zIndex: 2,
+                pointerEvents: (!isMeasurementOverlayVisible && (calibrationMode || measurementMode)) ? "auto" : "none",
+              }}
                 onMouseDown={(e) => {
                   if (measurementMode) {
                     handleMeasurementMouseDown(e);
@@ -2310,7 +2471,6 @@ function ImageLightboxCarousel({
                   }
                 }}
               />
-            )}
             {/* Old pill removed */}
             {measurementMode &&
               measurementLabelPos &&
@@ -2401,7 +2561,7 @@ function ImageLightboxCarousel({
                   justifyContent: "center",
                   transition: "background 0.15s, transform 0.15s",
                 }}
-                onClick={handleActivateCalibration}
+                onClick={() => onCheckMicrographLimit(handleActivateCalibration)}
                 onMouseOver={(e) => {
                   if (!calibrationMode)
                     e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -2434,10 +2594,14 @@ function ImageLightboxCarousel({
                   opacity: !!calibratingByUrl?.[currentImage.url] ? 0.65 : 1,
                 }}
                 disabled={!!calibratingByUrl?.[currentImage.url] || !onRetryAutoCalibration}
-                onClick={() => {
+                onClick={() => onCheckMicrographLimit(() => {
                   if (!currentImage?.url || !!calibratingByUrl?.[currentImage.url] || !onRetryAutoCalibration) return;
+                  if (!(microMaterialHasModelByUrl[currentImage.url] ?? true)) {
+                    pushToast("Material no soportado.", "error", 5000);
+                    return;
+                  }
                   onRetryAutoCalibration(currentImage.url);
-                }}
+                })}
                 onMouseOver={(e) => {
                   if (!!calibratingByUrl?.[currentImage.url]) return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -2475,10 +2639,10 @@ function ImageLightboxCarousel({
                   transition: "background 0.15s",
                   opacity: measurementEnabled ? 1 : 0.55,
                 }}
-                onClick={() => {
+                onClick={() => onCheckMicrographLimit(() => {
                   if (!measurementEnabled) return;
                   handleActivateMeasurement();
-                }}
+                })}
                 onMouseOver={(e) => {
                   if (
                     !measurementEnabled ||
@@ -2526,14 +2690,14 @@ function ImageLightboxCarousel({
                   opacity: isMaskLoading ? 0.65 : 1,
                 }}
                 disabled={isMaskLoading}
-                onClick={() => {
+                onClick={() => onCheckMicrographLimit(() => {
                   if (isMaskVisible) {
                     setActiveSidebarTool("overview");
                   } else {
                     setActiveSidebarTool("mask");
                   }
                   void onGenerateMask(currentImage.url);
-                }}
+                })}
                 onMouseOver={(e) => {
                   if (isMaskLoading || isMaskVisible) return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -2544,6 +2708,48 @@ function ImageLightboxCarousel({
                 }}
               >
                 <MaskIcon />
+              </button>
+              {/* ---- Chart tool ---- */}
+              <button
+                title={
+                  !currentMeasurementOverlayUrl
+                    ? "Gráfico de medición no disponible"
+                    : isMeasurementOverlayVisible
+                      ? "Ocultar gráfico de medición"
+                      : "Ver gráfico de medición"
+                }
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "50%",
+                  border: "none",
+                  background: isMeasurementOverlayVisible
+                    ? "rgba(51,158,234,0.88)"
+                    : "rgba(0,0,0,0.56)",
+                  color: "white",
+                  cursor: !currentMeasurementOverlayUrl ? "default" : "pointer",
+                  lineHeight: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "background 0.15s",
+                  opacity: currentMeasurementOverlayUrl ? 1 : 0.55,
+                }}
+                disabled={!currentMeasurementOverlayUrl}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleMeasurementOverlay?.(currentImage.url);
+                }}
+                onMouseOver={(e) => {
+                  if (!currentMeasurementOverlayUrl || isMeasurementOverlayVisible) return;
+                  e.currentTarget.style.background = "rgba(51,158,234,0.78)";
+                }}
+                onMouseOut={(e) => {
+                  if (!currentMeasurementOverlayUrl || isMeasurementOverlayVisible) return;
+                  e.currentTarget.style.background = "rgba(0,0,0,0.56)";
+                }}
+              >
+                <ChartIcon />
               </button>
               {/* ---- Pencil tool ---- */}
               <button
@@ -2566,12 +2772,12 @@ function ImageLightboxCarousel({
                   transition: "background 0.15s",
                   opacity: 1,
                 }}
-                onClick={() => {
+                onClick={() => onCheckMicrographLimit(() => {
                   setActiveSidebarTool("mask");
                   setMaskEditTool((prev) =>
                     prev === "pencil" ? null : "pencil",
                   );
-                }}
+                })}
                 onMouseOver={(e) => {
                   if (maskEditTool === "pencil") return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -2604,12 +2810,12 @@ function ImageLightboxCarousel({
                   transition: "background 0.15s",
                   opacity: 1,
                 }}
-                onClick={() => {
+                onClick={() => onCheckMicrographLimit(() => {
                   setActiveSidebarTool("mask");
                   setMaskEditTool((prev) =>
                     prev === "eraser" ? null : "eraser",
                   );
-                }}
+                })}
                 onMouseOver={(e) => {
                   if (maskEditTool === "eraser") return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -2639,10 +2845,10 @@ function ImageLightboxCarousel({
                   opacity: isDrawingToolActive ? 1 : 0.45,
                 }}
                 disabled={!isDrawingToolActive}
-                onClick={() => {
+                onClick={() => onCheckMicrographLimit(() => {
                   if (!isDrawingToolActive) return;
                   clearCurrentDrawing();
-                }}
+                })}
                 onMouseOver={(e) => {
                   if (!isDrawingToolActive) return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -2889,7 +3095,6 @@ function ImageLightboxCarousel({
               )}
             </div>
           )}
-
         </div>
 
         {/* ---- MAIN (50%) ---- */}
@@ -3005,6 +3210,13 @@ function ImageLightboxCarousel({
                       <span>
                         Calibración: {calibrationRatio.toFixed(4)} µm/px
                       </span>
+                      {currentCalibration.pixelLength > 0 &&
+                        currentCalibration.micrometers > 0 && (
+                          <span>
+                            {currentCalibration.pixelLength} px ={" "}
+                            {currentCalibration.micrometers} µm
+                          </span>
+                        )}
                     </>
                   )}
                 </div>
@@ -3392,6 +3604,17 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null,
   );
 
+  const [companyEnabled, setCompanyEnabled] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("company_enabled") === "true";
+    }
+    return true;
+  });
+
+  const [showDisabledCompanyModal, setShowDisabledCompanyModal] = useState<boolean>(!companyEnabled);
+
+
+
   const apiOrigin = useMemo(() => {
     try {
       return new URL(api.BASE_URL).origin;
@@ -3489,45 +3712,49 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     return map;
   }, [microInfoByUrl]);
 
-  const materials: Material[] = apiMateriales.map((material) => {
-    const muestrasDelMaterial = apiMuestras.filter(
-      (mue) => String(mue.material) === String(material.id),
-    );
+  const materials: Material[] = useMemo(
+    () =>
+      apiMateriales.map((material) => {
+        const muestrasDelMaterial = apiMuestras.filter(
+          (mue) => String(mue.material) === String(material.id),
+        );
 
-    const muestraImage = muestrasDelMaterial[0]?.imagen
-      ? fixImageUrl(muestrasDelMaterial[0].imagen)
-      : "";
+        const muestraImage = muestrasDelMaterial[0]?.imagen
+          ? fixImageUrl(muestrasDelMaterial[0].imagen)
+          : "";
 
-    return {
-      id: `mat_${material.id}`,
-      name: material.nombre,
-      image: muestraImage,
-      muestras: muestrasDelMaterial.map((mue) => ({
-        id: `mue_${mue.id}`,
-        name: mue.nombre,
-        image: fixImageUrl(mue.imagen),
-        regiones: apiRegiones
-          .filter((r) => String(r.muestra) === String(mue.id))
-          .map((reg) => ({
-            id: `reg_${reg.id}`,
-            name: reg.nombre,
-            image: fixImageUrl(reg.imagen),
-            micrografias: apiMicrografias
-              .filter((mic) => String(mic.region) === String(reg.id))
-              .map((mic) => ({
-                id: `mic_${mic.id}`,
-                rawId: String(mic.id),
-                name: mic.nombre,
-                url: fixImageUrl(mic.imagen),
-                umByPx:
-                  mic.um_by_px !== undefined && mic.um_by_px !== null
-                    ? Number(mic.um_by_px)
-                    : null,
+        return {
+          id: `mat_${material.id}`,
+          name: material.nombre,
+          image: muestraImage,
+          muestras: muestrasDelMaterial.map((mue) => ({
+            id: `mue_${mue.id}`,
+            name: mue.nombre,
+            image: fixImageUrl(mue.imagen),
+            regiones: apiRegiones
+              .filter((r) => String(r.muestra) === String(mue.id))
+              .map((reg) => ({
+                id: `reg_${reg.id}`,
+                name: reg.nombre,
+                image: fixImageUrl(reg.imagen),
+                micrografias: apiMicrografias
+                  .filter((mic) => String(mic.region) === String(reg.id))
+                  .map((mic) => ({
+                    id: `mic_${mic.id}`,
+                    rawId: String(mic.id),
+                    name: mic.nombre,
+                    url: fixImageUrl(mic.imagen),
+                    umByPx:
+                      mic.um_by_px !== undefined && mic.um_by_px !== null
+                        ? Number(mic.um_by_px)
+                        : null,
+                  })),
               })),
           })),
-      })),
-    };
-  });
+        };
+      }),
+    [apiMateriales, apiMuestras, apiRegiones, apiMicrografias, fixImageUrl],
+  );
 
   // Extract raw API id from namespaced id (e.g. "mue_42" → "42")
   const apiId = (namespacedId: string) =>
@@ -3537,16 +3764,25 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     if (!token) return;
     setIsLoading(true);
     try {
-      const [m, mats, r, img] = await Promise.all([
+      const [m, mats, r, img, companyStatus] = await Promise.all([
         api.getMuestras(),
         api.getMateriales(),
         api.getRegiones(),
         api.getMicrografias(),
+        api.getCompanyStatus(),
       ]);
       setApiMuestras(m);
       setApiMateriales(mats);
       setApiRegiones(r);
       setApiMicrografias(img);
+      
+      if (companyStatus !== companyEnabled) {
+        setCompanyEnabled(companyStatus);
+        setShowDisabledCompanyModal(!companyStatus);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("company_enabled", companyStatus ? "true" : "false");
+        }
+      }
       return { m, mats, r, img };
     } catch (err) {
       console.error(err);
@@ -3570,27 +3806,52 @@ export default function FileManager({ onLogout }: FileManagerProps) {
   }, [fetchAll, token]);
 
   useEffect(() => {
+    if (companyEnabled) {
+      connectNotificationsWebSocket(token);
+    } else {
+      disconnectNotificationsWebSocket();
+    }
+    return () => disconnectNotificationsWebSocket();
+  }, [companyEnabled, token]);
+
+
+  useEffect(() => {
     const nextCalibrationData: Record<string, CalibrationInfo> = {};
+    const nextFailed: Record<string, boolean> = {};
     let rememberedMicrometers = 0;
+    const verticesCache = readVerticesCacheStore();
 
     apiMicrografias.forEach((mic) => {
+      const imageUrl = fixImageUrl(mic.imagen);
+      if (!imageUrl) return;
+
+      if ((mic as any).calibration_failed) {
+        nextFailed[imageUrl] = true;
+      }
+
       if (mic.um_by_px && mic.um_by_px > 0) {
-        const imageUrl = fixImageUrl(mic.imagen);
-        if (imageUrl) {
-          nextCalibrationData[imageUrl] = {
+          const calInfo: CalibrationInfo = {
             umByPx: Number(mic.um_by_px),
             isAi: !!mic.is_ai,
             pixelLength: mic.pixel_length ? Number(mic.pixel_length) : 0,
             micrometers: mic.micrometers ? Number(mic.micrometers) : 0,
           };
+          // Merge cached vertices if available for this URL
+          const cached = verticesCache[imageUrl];
+          if (cached && cached.vertices && mic.is_ai) {
+            calInfo.vertices = cached.vertices;
+            calInfo.sourceWidth = cached.sourceWidth;
+            calInfo.sourceHeight = cached.sourceHeight;
+          }
+          nextCalibrationData[imageUrl] = calInfo;
           if (mic.micrometers && mic.micrometers > 0) {
             rememberedMicrometers = Number(mic.micrometers);
           }
-        }
       }
     });
 
     setCalibrationData(nextCalibrationData);
+    setFailedCalibrationByUrl(prev => ({ ...prev, ...nextFailed }));
     if (rememberedMicrometers > 0) {
       setLastMicrometers(rememberedMicrometers);
     }
@@ -3612,12 +3873,23 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       const existing = calibrationDataRef.current[url];
       if (existing && existing.isAi === false) {
          setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
+         window.dispatchEvent(new CustomEvent("show_toast", { detail: { message: "Autocalibración por IA lista, no se aplica el resultado por micrografía ya calibrada manualmente", type: "warning" } }));
          return;
       }
       
       setCalibrationData((prev) => ({ ...prev, [url]: data }));
       setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
       setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: false }));
+      // Persist vertices to localStorage
+      if (data.vertices && data.vertices.length > 0) {
+        const freshVerticesCache = readVerticesCacheStore();
+        freshVerticesCache[url] = {
+          vertices: data.vertices,
+          sourceWidth: data.sourceWidth || 0,
+          sourceHeight: data.sourceHeight || 0,
+        };
+        writeVerticesCacheStore(freshVerticesCache);
+      }
       // Persist to backend and update local state
       if (info?.rawId && data?.umByPx) {
         const fd = new FormData();
@@ -3643,11 +3915,27 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       const existing = calibrationDataRef.current[url];
       if (existing && existing.isAi === false) {
          setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
+         window.dispatchEvent(new CustomEvent("show_toast", { detail: { message: "Autocalibración por IA fallida, micrografía ya calibrada manualmente", type: "warning" } }));
          return;
       }
 
       setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
       setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: true }));
+
+      const info = microInfoByUrlRef.current[url];
+      if (info?.rawId) {
+        const fd = new FormData();
+        fd.append("calibration_failed", "true");
+        api.updateMicrografia(info.rawId, fd).then(() => {
+          setApiMicrografias((prev) =>
+            prev.map((m) =>
+              String(m.id) === info.rawId
+                ? { ...m, calibration_failed: true } as any
+                : m,
+            ),
+          );
+        }).catch((err) => console.error("Error persisting auto-calibration failure", err));
+      }
     };
     window.addEventListener("calibration_started", handleCalibrationStarted);
     window.addEventListener("calibration_updated", handleCalibrationUpdated);
@@ -3698,6 +3986,11 @@ export default function FileManager({ onLogout }: FileManagerProps) {
   // Gallery view
   const [galleryView, setGalleryView] = useState<GalleryView>({ kind: "none" });
   const [galleryTitle, setGalleryTitle] = useState("Seleccione un elemento");
+  const [measureEventsById, setMeasureEventsById] =
+    useState<Record<string, MicrographyMeasureCompletedEvent>>({});
+  const [measurementOverlayVisibleByUrl, setMeasurementOverlayVisibleByUrl] =
+    useState<Record<string, boolean>>({});
+  const missingActiveMicrografiaRefreshRef = useRef<string | null>(null);
 
   // Derive context info for the lightbox from the selected node in the tree
   const lightboxContextInfo = useMemo(() => {
@@ -3769,7 +4062,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
   const [renameModalError, setRenameModalError] = useState<string | null>(null);
   const [createModal, setCreateModal] = useState<{
     parentId: string | number;
-    type: "muestra" | "region" | "micrografia";
+    type: "material" | "muestra" | "region" | "micrografia";
   } | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{
     current: number;
@@ -3818,6 +4111,50 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     [removeToast],
   );
 
+  const checkMicrographLimit = useCallback((action: () => void) => {
+    if (!companyEnabled) {
+      pushToast(`Tu compañía no está habilitada aún.`, "error", 5000);
+    } else {
+      action();
+    }
+  }, [companyEnabled, pushToast]);
+
+  useEffect(() => {
+    const handleShowToast = (e: any) => {
+      pushToast(e.detail.message, e.detail.type || "warning", e.detail.duration || 6000);
+    };
+    window.addEventListener("show_toast", handleShowToast);
+    return () => window.removeEventListener("show_toast", handleShowToast);
+  }, [pushToast]);
+
+  useEffect(() => {
+    const handleMeasureCompleted = (event: Event) => {
+      const payload = (event as CustomEvent<MicrographyMeasureCompletedEvent>)
+        .detail;
+      const microId = normalizeId(payload?.micrografia_id);
+      if (!microId) return;
+
+      setMeasureEventsById((prev) => ({
+        ...prev,
+        [microId]: payload,
+      }));
+      missingActiveMicrografiaRefreshRef.current = null;
+      void fetchAll();
+    };
+
+    window.addEventListener(
+      MICROGRAPHY_MEASURE_COMPLETED_EVENT,
+      handleMeasureCompleted,
+    );
+    return () =>
+      window.removeEventListener(
+        MICROGRAPHY_MEASURE_COMPLETED_EVENT,
+        handleMeasureCompleted,
+      );
+  }, [fetchAll]);
+
+
+
   const closeMenu = () => undefined;
 
   const toggleExpand = (id: string) => {
@@ -3830,7 +4167,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
   };
 
   // ---- Gallery image list derived from view ----
-  const getGalleryImages = (): { name: string; url: string }[] => {
+  const getGalleryImages = (): { name: string; url: string; id?: string }[] => {
     const v = galleryView;
     switch (v.kind) {
       case "none":
@@ -3848,7 +4185,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       case "single-region":
         return [{ name: v.region.name, url: v.region.image }];
       case "micrografias":
-        return v.images.map((m) => ({ name: m.name, url: m.url }));
+        return v.images.map((m) => ({ name: m.name, url: m.url, id: m.rawId }));
       default:
         return [];
     }
@@ -3873,6 +4210,32 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     return map;
   }, [galleryImages, galleryCalibrableByUrl, calibratedByUrl]);
 
+  const measurementOverlayById = useMemo(() => {
+    const overlays: Record<string, string> = {};
+    
+    apiMicrografias.forEach((mic) => {
+      if (mic.measure_imagen) {
+        overlays[String(mic.id)] = fixImageUrl(mic.measure_imagen);
+      }
+    });
+
+    // Merge in real-time WebSocket events (may arrive before fetchAll updates apiMicrografias)
+    for (const [microId, evt] of Object.entries(measureEventsById)) {
+      if (evt.imagen) {
+        overlays[microId] = fixImageUrl(evt.imagen);
+      }
+    }
+    
+    return overlays;
+  }, [measureEventsById, apiMicrografias, fixImageUrl]);
+
+  const toggleMeasurementOverlay = useCallback((imageUrl: string) => {
+    setMeasurementOverlayVisibleByUrl((prev) => ({
+      ...prev,
+      [imageUrl]: !prev[imageUrl],
+    }));
+  }, []);
+
   const microSiblingsByUrl = useMemo(() => {
     const map: Record<string, { name: string; url: string }[]> = {};
     materials.forEach((mat) => {
@@ -3881,6 +4244,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           const regionImages = reg.micrografias.map((m) => ({
             name: m.name,
             url: m.url,
+            id: m.rawId,
           }));
           reg.micrografias.forEach((mic) => {
             map[mic.url] = regionImages;
@@ -3923,6 +4287,40 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     });
     return map;
   }, [apiMateriales, apiMuestras, apiRegiones, apiMicrografias, fixImageUrl]);
+
+  const microMaterialHasModelByUrl = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    apiMateriales.forEach((apiMat) => {
+      const hasModel = !!apiMat.has_model;
+      const muestrasOfMat = apiMuestras.filter(
+        (mue) => String(mue.material) === String(apiMat.id),
+      );
+      muestrasOfMat.forEach((mue) => {
+        const regionsOfMue = apiRegiones.filter(
+          (r) => String(r.muestra) === String(mue.id),
+        );
+        regionsOfMue.forEach((reg) => {
+          const microsOfReg = apiMicrografias.filter(
+            (mic) => String(mic.region) === String(reg.id),
+          );
+          microsOfReg.forEach((mic) => {
+            const url = fixImageUrl(mic.imagen);
+            map[url] = hasModel;
+          });
+        });
+      });
+    });
+    return map;
+  }, [apiMateriales, apiMuestras, apiRegiones, apiMicrografias, fixImageUrl]);
+
+  const getMaterialHasModelByRegionId = useCallback((regionId: string) => {
+    const reg = apiRegiones.find(r => String(r.id) === regionId);
+    if (!reg) return false;
+    const mue = apiMuestras.find(m => String(m.id) === String(reg.muestra));
+    if (!mue) return false;
+    const mat = apiMateriales.find(m => String(m.id) === String(mue.material));
+    return !!mat?.has_model;
+  }, [apiRegiones, apiMuestras, apiMateriales]);
 
   // ---- Helper: recursively collect children IDs for removal ----
   const getChildIds = (
@@ -4090,8 +4488,15 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       else if (type === "micrografia") await api.deleteMicrografia(rawId);
 
       setDeleteModal(null);
-      setGalleryView({ kind: "none" });
-      setGalleryTitle("Seleccione un elemento");
+      setGalleryView((prev) => {
+        if (prev.kind === "none") return prev;
+        if (type === "micrografia" && prev.kind === "micrografias") {
+          const filtered = prev.images.filter((img) => String(img.id) !== id && img.rawId !== rawId);
+          if (filtered.length > 0) return { kind: "micrografias", images: filtered };
+        }
+        setGalleryTitle("Seleccione un elemento");
+        return { kind: "none" };
+      });
       fetchAll();
       pushToast("Elemento eliminado correctamente.", "success", 4200);
     } catch (e) {
@@ -4201,7 +4606,10 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             const rawFile = fds[i].get("imagen");
             const normalizedUrl = fixImageUrl(apiRes?.imagen);
             if (rawFile instanceof Blob && normalizedUrl) {
-              addMicrografiaToAutoCalibrationQueue(rawFile, normalizedUrl);
+              const regionId = String(fds[i].get("region") || "");
+              if (getMaterialHasModelByRegionId(regionId)) {
+                addMicrografiaToAutoCalibrationQueue(rawFile, normalizedUrl);
+              }
             }
           } catch (e) {
             errors++;
@@ -4231,7 +4639,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       } else {
         // Single upload
         const fd = fds[0];
-        if (currentCreateModal?.type === "muestra") await api.createMuestra(fd);
+        if (currentCreateModal?.type === "material") await api.createMaterial(fd);
+        else if (currentCreateModal?.type === "muestra") await api.createMuestra(fd);
         else if (currentCreateModal?.type === "region")
           await api.createRegion(fd);
         else if (currentCreateModal?.type === "micrografia") {
@@ -4239,7 +4648,10 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           const rawFile = fd.get("imagen");
           const normalizedUrl = fixImageUrl(apiRes?.imagen);
           if (rawFile instanceof Blob && normalizedUrl) {
-            addMicrografiaToAutoCalibrationQueue(rawFile, normalizedUrl);
+            const regionId = String(fd.get("region") || "");
+            if (getMaterialHasModelByRegionId(regionId)) {
+              addMicrografiaToAutoCalibrationQueue(rawFile, normalizedUrl);
+            }
           }
         }
       }
@@ -4274,6 +4686,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               rawId: String(mic.id),
               name: mic.nombre,
               url: fixImageUrl(mic.imagen),
+
               umByPx:
                 mic.um_by_px !== undefined && mic.um_by_px !== null
                   ? Number(mic.um_by_px)
@@ -4289,7 +4702,11 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           setGalleryView({ kind: "micrografias", images: nextMicrografias });
         }
       }
-      pushToast("Elemento creado correctamente.", "success", 4200);
+      if (currentCreateModal?.type === "micrografia") {
+        pushToast(`${fds.length} micrografía${fds.length > 1 ? 's' : ''} añadida${fds.length > 1 ? 's' : ''} correctamente.`, "success", 4200);
+      } else {
+        pushToast("Elemento creado correctamente.", "success", 4200);
+      }
     } catch (e) {
       const maybeApiError = e as ApiLikeError;
       if (
@@ -4479,8 +4896,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     try {
       setPdfLoading(true);
       await api.generatePdf(selectedPdfMuestraId);
-      setShowInformeDispatchMessage(true);
-      setPdfStatusMessage("Solicitud de informe enviada. En proceso.");
+      pushToast("Solicitud de informe enviada. En proceso.", "info", 5000);
       setQueuedPdfMuestraIds((prev) => new Set(prev).add(selectedPdfMuestraId));
       setDirtyPdfMuestraIds((prev) => {
         const next = new Set(prev);
@@ -4596,6 +5012,12 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         return;
       }
 
+      const hasModel = microMaterialHasModelByUrl[imageUrl] ?? true;
+      if (!hasModel) {
+        pushToast("Material no soportado.", "error", 5000);
+        return;
+      }
+
       const hasMaskLoaded = !!maskByImageUrl[imageUrl];
       if (hasMaskLoaded) {
         const labelsCache = readMaskLabelsCacheStore();
@@ -4638,10 +5060,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       if (maskLoadingByImageUrl[imageUrl]) return;
 
       setMaskLoadingByImageUrl((prev) => ({ ...prev, [imageUrl]: true }));
-      const loaderId = api.showGlobalLoader(
-        "Generando máscara de material...",
-        "Esto puede tardar unos segundos.",
-      );
+      pushToast("Generando máscara de material...", "info", 5000);
 
       try {
         let finalMaskUrl = "";
@@ -4733,7 +5152,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           "No se pudo generar la máscara.";
         pushToast(msg, "error", 8600);
       } finally {
-        api.hideGlobalLoader(loaderId);
         setMaskLoadingByImageUrl((prev) => ({ ...prev, [imageUrl]: false }));
       }
     },
@@ -4759,6 +5177,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     isCalibrating = false,
     isFailed = false,
     isAi = false,
+    hasModel = true,
     onClick,
   }: {
     id: string;
@@ -4769,6 +5188,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     isCalibrating?: boolean;
     isFailed?: boolean;
     isAi?: boolean;
+    hasModel?: boolean;
     onClick: () => void;
   }) => {
     const isFolder = type !== "micrografia";
@@ -4796,7 +5216,10 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           e.stopPropagation();
           onClick();
         }}
-        style={{ paddingLeft: 10, paddingRight: 12 }}
+        style={{
+          paddingLeft: 10,
+          paddingRight: 12,
+        }}
       >
         <div className="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0">
           {isFolder && (
@@ -4814,9 +5237,17 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           >
             {name}
           </span>
-          {type === "micrografia" && (
+          {type === "micrografia" && companyEnabled !== false && (hasModel || isCalibrated) && (
             <span
-              title={isCalibrated ? "Calibrada" : isCalibrating ? "Autocalibrando..." : isFailed ? "Fallo IA" : "Sin calibrar"}
+              title={
+                isCalibrated
+                  ? "Calibrada"
+                  : isCalibrating
+                    ? "Autocalibrando..."
+                    : isFailed
+                      ? "Fallo IA"
+                      : "Sin calibrar"
+              }
               style={{
                 marginLeft: 4,
                 display: "inline-flex",
@@ -4993,16 +5424,32 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           onScroll={closeMenu}
         >
           {/* MATERIALES header */}
-          <div
-            className="mx-2 my-2 inline-flex items-center px-3 py-1.5 text-[11px] font-bold text-[#3f6b8f] uppercase tracking-[0.12em] cursor-pointer select-none rounded-lg border border-[#b7dbf7] bg-white shadow-[0_1px_2px_rgba(16,36,63,0.06)] transition-shadow hover:shadow-[0_8px_16px_rgba(16,36,63,0.16)]"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleHeaderMateriales();
-            }}
-            title="Ver todas las imágenes de Materiales"
-          >
-            Materiales
+          <div className="flex items-center gap-2">
+            <div
+              className="mx-2 my-2 inline-flex items-center px-3 py-1.5 text-[11px] font-bold text-[#3f6b8f] uppercase tracking-[0.12em] cursor-pointer select-none rounded-lg border border-[#b7dbf7] bg-white shadow-[0_1px_2px_rgba(16,36,63,0.06)] transition-shadow hover:shadow-[0_8px_16px_rgba(16,36,63,0.16)]"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleHeaderMateriales();
+              }}
+              title="Ver todas las imágenes de Materiales"
+            >
+              Materiales
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setCreateModal({ parentId: "root", type: "material" });
+              }}
+              title="Crear Material"
+              className="w-6 h-6 flex items-center justify-center rounded border border-[#b7dbf7] text-[#3f6b8f] hover:bg-[#eef8ff] transition shadow-[0_1px_2px_rgba(16,36,63,0.06)] bg-white cursor-pointer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
           </div>
+
 
           {/* Material items */}
           {materials.map((mat) => (
@@ -5091,9 +5538,10 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                                     (!!mic.umByPx && Number(mic.umByPx) > 0) ||
                                     (!!calibrationData[mic.url]?.umByPx && Number(calibrationData[mic.url]?.umByPx) > 0)
                                   }
-                                  isCalibrating={!!calibratingByUrl[mic.url]}
-                                  isFailed={!!failedCalibrationByUrl[mic.url]}
-                                  isAi={!!calibrationData[mic.url]?.isAi}
+                                  isCalibrating={!!calibratingByUrl[mic.url] && (microMaterialHasModelByUrl[mic.url] ?? true)}
+                                  isFailed={!!failedCalibrationByUrl[mic.url] && (microMaterialHasModelByUrl[mic.url] ?? true)}
+                                  isAi={!!calibrationData[mic.url]?.isAi && (microMaterialHasModelByUrl[mic.url] ?? true)}
+                                  hasModel={microMaterialHasModelByUrl[mic.url] ?? true}
                                   onClick={() =>
                                     handleClickMicrografia(mic, reg)
                                   }
@@ -5146,12 +5594,15 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             className="custom-scrollbar"
           >
             <ResponsiveGallery
+              companyEnabled={companyEnabled}
               images={galleryImages}
               calibrableByUrl={galleryCalibrableByUrl}
               calibratedByUrl={galleryCalibratedByUrl}
               calibratingByUrl={calibratingByUrl}
               failedCalibrationByUrl={failedCalibrationByUrl}
               calibrationData={calibrationData}
+              microMaterialHasModelByUrl={microMaterialHasModelByUrl}
+              highlightedByUrl={{} as Record<string, boolean>}
               onImageClick={(img) => {
                 const isSingleMicroFromTree =
                   galleryView.kind === "micrografias" &&
@@ -5178,9 +5629,9 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           style={{
             gridArea: "gallery",
             position: "fixed",
-            bottom: 24,
+            top: "50%",
             left: "50%",
-            transform: "translateX(-50%)",
+            transform: "translate(-50%, -50%)",
             zIndex: 200,
             background: "white",
             border: "1px solid rgba(51,158,234,0.3)",
@@ -5285,7 +5736,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               style={{
                 border: "1px solid rgba(16,36,63,0.16)",
                 borderRadius: 18,
-                padding: 10,
+                padding: "10px 2px 10px 10px",
                 background: "#f9fcff",
                 minHeight: 120,
                 minWidth: 0,
@@ -5293,6 +5744,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                 flexDirection: "column",
                 gap: 10,
                 height: "100%",
+                overflow: "hidden",
               }}
             >
               {informesListIsEmpty ? (
@@ -5313,22 +5765,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                 </div>
               ) : (
                 <>
-                  {pdfStatusMessage && (
-                    <div
-                      style={{
-                        fontSize: "0.82rem",
-                        color: "#4d6684",
-                        background: "white",
-                        padding: "8px 10px",
-                        borderRadius: 10,
-                        border: "1px dashed rgba(16,36,63,0.22)",
-                        textAlign: "center",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {pdfStatusMessage}
-                    </div>
-                  )}
 
                   {pdfHistory.length > 0 && (
                     <div
@@ -5338,7 +5774,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                         flex: 1,
                         overflowY: "auto",
                         minHeight: 0,
-                        paddingRight: 2,
                       }}
                     >
                       <ul
@@ -5376,6 +5811,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                                 whiteSpace: "nowrap",
                                 flex: 1,
                                 minWidth: 0,
+                                textAlign: "center",
                               }}
                             >
                               {pdf.value || `Informe_ID_${pdf.id}`}.pdf
@@ -5403,13 +5839,14 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               style={{
                 border: "1px solid rgba(16,36,63,0.16)",
                 borderRadius: 18,
-                padding: 10,
+                padding: "10px 2px 10px 10px",
                 background: "#f9fcff",
                 minHeight: 120,
                 minWidth: 0,
                 display: "flex",
                 flexDirection: "column",
                 height: "100%",
+                overflow: "hidden",
               }}
             >
               {muestrasListIsEmpty ? (
@@ -5436,7 +5873,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                     flex: 1,
                     overflowY: "auto",
                     minHeight: 0,
-                    paddingRight: 2,
                   }}
                 >
                   <ul
@@ -5558,7 +5994,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
 
             <button
               className="pdf-btn-primary"
-              onClick={handleGeneratePdf}
+              onClick={() => checkMicrographLimit(handleGeneratePdf)}
               disabled={
                 pdfLoading ||
                 selectedPdfMuestraLocked ||
@@ -5601,18 +6037,24 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         typeof document !== "undefined" &&
         createPortal(
           <ImageLightboxCarousel
+            onCheckMicrographLimit={checkMicrographLimit}
             images={lightboxImages}
             initialIndex={lightboxIndex}
             calibrableByUrl={lightboxCalibrableByUrl}
             calibrationData={calibrationData}
             calibratingByUrl={calibratingByUrl}
             failedCalibrationByUrl={failedCalibrationByUrl}
+            microMaterialHasModelByUrl={microMaterialHasModelByUrl}
             maskByImageUrl={maskByImageUrl}
             maskLabelsByImageUrl={maskLabelsByImageUrl}
             maskVisibleByImageUrl={maskVisibleByImageUrl}
             maskLoadingByImageUrl={maskLoadingByImageUrl}
             lastMicrometers={lastMicrometers}
             contextInfo={lightboxContextInfo}
+            measurementOverlayById={measurementOverlayById}
+            measurementOverlayVisibleByUrl={measurementOverlayVisibleByUrl}
+            onToggleMeasurementOverlay={toggleMeasurementOverlay}
+            pushToast={pushToast}
             onRetryAutoCalibration={async (url) => {
               try {
                 setCalibratingByUrl((prev) => ({ ...prev, [url]: true }));
@@ -5631,8 +6073,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                 data.umByPx || data.micrometers / Math.max(data.pixelLength, 1);
               const microInfo = microInfoByUrl[url];
 
-              const calDataWithAi = { ...data, umByPx: ratio, isAi: false };
-              setCalibrationData((prev) => ({ ...prev, [url]: calDataWithAi }));
               setCalibratingByUrl((prev) => ({ ...prev, [url]: false }));
               setFailedCalibrationByUrl((prev) => ({ ...prev, [url]: false }));
 
@@ -5884,6 +6324,37 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           </div>,
           document.body,
         )}
+
+      {showDisabledCompanyModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+          <div className="absolute inset-0 bg-[#10243f66] backdrop-blur-sm" />
+          <div
+            className="relative bg-white rounded-[28px] shadow-xl border border-[#10243f14] max-w-md w-[90%] overflow-hidden text-center p-8"
+          >
+            <div
+              className="w-16 h-16 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-6"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+            </div>
+            <h2 className="m-0 mb-4 text-[#10243f] text-2xl font-bold">
+              Compañía en Revisión
+            </h2>
+            <p className="m-0 mb-6 text-[#4d6684] leading-relaxed">
+              Tu compañía aún no está habilitada. Debes cargar al menos <strong>20 micrografías</strong> ordenadas como quieras (materiales, muestras, regiones) y luego esperar la habilitación manual de los administradores.
+            </p>
+            <button
+              onClick={() => setShowDisabledCompanyModal(false)}
+              className="px-8 py-3 rounded-xl bg-[#10243f] text-white font-semibold text-base cursor-pointer transition-opacity hover:opacity-90 border-none w-full"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
 
       <style
         dangerouslySetInnerHTML={{
