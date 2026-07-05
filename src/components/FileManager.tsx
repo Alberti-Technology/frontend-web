@@ -1002,34 +1002,11 @@ function ResponsiveGallery({
                   aspectRatio: cardAspectRatio,
                   overflow: "hidden",
                   background: "#f0f4f8",
-                  border: isHighlighted
-                    ? "2px solid #16a34a"
-                    : "1px solid rgba(16,36,63,0.08)",
-                  boxShadow: isHighlighted
-                    ? "0 0 0 4px rgba(22,163,74,0.18), 0 16px 30px rgba(16,36,63,0.16)"
-                    : "0 1px 3px rgba(16,36,63,0.08)",
+                  border: "1px solid rgba(16,36,63,0.08)",
+                  boxShadow: "0 1px 3px rgba(16,36,63,0.08)",
                 }}
                 onClick={() => onImageClick(img)}
               >
-                {isHighlighted && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 8,
-                      right: 8,
-                      zIndex: 3,
-                      background: "rgba(22, 163, 74, 0.95)",
-                      color: "white",
-                      fontSize: "0.68rem",
-                      fontWeight: 800,
-                      padding: "4px 8px",
-                      borderRadius: 999,
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
-                    }}
-                  >
-                    Medicion lista
-                  </div>
-                )}
                 {isCalibrable && companyEnabled !== false && (
                   <div
                     style={{
@@ -3997,11 +3974,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
   // Gallery view
   const [galleryView, setGalleryView] = useState<GalleryView>({ kind: "none" });
   const [galleryTitle, setGalleryTitle] = useState("Seleccione un elemento");
-  const [activeMeasureEvent, setActiveMeasureEvent] =
-    useState<MicrographyMeasureCompletedEvent | null>(null);
-  const [activeMicrografiaId, setActiveMicrografiaId] = useState<string | null>(
-    null,
-  );
+  const [measureEventsById, setMeasureEventsById] =
+    useState<Record<string, MicrographyMeasureCompletedEvent>>({});
   const [measurementOverlayVisibleByUrl, setMeasurementOverlayVisibleByUrl] =
     useState<Record<string, boolean>>({});
   const missingActiveMicrografiaRefreshRef = useRef<string | null>(null);
@@ -4148,14 +4122,12 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       const microId = normalizeId(payload?.micrografia_id);
       if (!microId) return;
 
-      setActiveMeasureEvent(payload);
-      setActiveMicrografiaId(microId);
+      setMeasureEventsById((prev) => ({
+        ...prev,
+        [microId]: payload,
+      }));
       missingActiveMicrografiaRefreshRef.current = null;
-      pushToast(
-        `Medicion completada para micrografia ${microId}.`,
-        "success",
-        6200,
-      );
+      void fetchAll();
     };
 
     window.addEventListener(
@@ -4167,40 +4139,9 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         MICROGRAPHY_MEASURE_COMPLETED_EVENT,
         handleMeasureCompleted,
       );
-  }, [pushToast]);
+  }, [fetchAll]);
 
-  useEffect(() => {
-    if (!activeMicrografiaId) return;
 
-    for (const mat of materials) {
-      for (const mue of mat.muestras) {
-        for (const reg of mue.regiones) {
-          const mic = reg.micrografias.find(
-            (item) => item.rawId === activeMicrografiaId,
-          );
-          if (!mic) continue;
-
-          setExpandedIds((prev) => {
-            const next = new Set(prev);
-            next.add(mat.id);
-            next.add(mue.id);
-            next.add(reg.id);
-            return next;
-          });
-          setSelectedId(mic.id);
-          setGalleryTitle(mic.name);
-          setGalleryView({ kind: "micrografias", images: [mic] });
-          return;
-        }
-      }
-    }
-
-    if (missingActiveMicrografiaRefreshRef.current === activeMicrografiaId) {
-      return;
-    }
-    missingActiveMicrografiaRefreshRef.current = activeMicrografiaId;
-    void fetchAll();
-  }, [activeMicrografiaId, materials, fetchAll]);
 
   const closeMenu = () => undefined;
 
@@ -4257,19 +4198,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     return map;
   }, [galleryImages, galleryCalibrableByUrl, calibratedByUrl]);
 
-  const activeMicrografiaUrl = useMemo(() => {
-    if (!activeMicrografiaId) return null;
-    const micro = apiMicrografias.find(
-      (item) => String(item.id) === activeMicrografiaId,
-    );
-    return micro ? fixImageUrl(micro.imagen) : null;
-  }, [activeMicrografiaId, apiMicrografias, fixImageUrl]);
-
-  const highlightedGalleryByUrl = useMemo(() => {
-    if (!activeMicrografiaUrl) return {} as Record<string, boolean>;
-    return { [activeMicrografiaUrl]: true };
-  }, [activeMicrografiaUrl]);
-
   const measurementOverlayById = useMemo(() => {
     const overlays: Record<string, string> = {};
     
@@ -4279,12 +4207,15 @@ export default function FileManager({ onLogout }: FileManagerProps) {
       }
     });
 
-    if (activeMeasureEvent?.micrografia_id && activeMeasureEvent?.imagen) {
-      overlays[String(activeMeasureEvent.micrografia_id)] = fixImageUrl(activeMeasureEvent.imagen);
+    // Merge in real-time WebSocket events (may arrive before fetchAll updates apiMicrografias)
+    for (const [microId, evt] of Object.entries(measureEventsById)) {
+      if (evt.imagen) {
+        overlays[microId] = fixImageUrl(evt.imagen);
+      }
     }
     
     return overlays;
-  }, [activeMeasureEvent, apiMicrografias, fixImageUrl]);
+  }, [measureEventsById, apiMicrografias, fixImageUrl]);
 
   const toggleMeasurementOverlay = useCallback((imageUrl: string) => {
     setMeasurementOverlayVisibleByUrl((prev) => ({
@@ -4703,7 +4634,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               rawId: String(mic.id),
               name: mic.nombre,
               url: fixImageUrl(mic.imagen),
-              measurementOverlayById: measurementOverlayById[String(mic.id)],
+
               umByPx:
                 mic.um_by_px !== undefined && mic.um_by_px !== null
                   ? Number(mic.um_by_px)
@@ -5188,7 +5119,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     isCalibrating = false,
     isFailed = false,
     isAi = false,
-    isActiveMeasure = false,
     onClick,
   }: {
     id: string;
@@ -5199,7 +5129,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     isCalibrating?: boolean;
     isFailed?: boolean;
     isAi?: boolean;
-    isActiveMeasure?: boolean;
     onClick: () => void;
   }) => {
     const isFolder = type !== "micrografia";
@@ -5230,12 +5159,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         style={{
           paddingLeft: 10,
           paddingRight: 12,
-          background: isActiveMeasure
-            ? "linear-gradient(90deg, rgba(22,163,74,0.16), rgba(223,241,255,0.72))"
-            : undefined,
-          boxShadow: isActiveMeasure
-            ? "inset 3px 0 0 #16a34a"
-            : undefined,
         }}
       >
         <div className="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0">
@@ -5257,15 +5180,13 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           {type === "micrografia" && companyEnabled !== false && (
             <span
               title={
-                isActiveMeasure
-                  ? "Medicion completada"
-                  : isCalibrated
-                    ? "Calibrada"
-                    : isCalibrating
-                      ? "Autocalibrando..."
-                      : isFailed
-                        ? "Fallo IA"
-                        : "Sin calibrar"
+                isCalibrated
+                  ? "Calibrada"
+                  : isCalibrating
+                    ? "Autocalibrando..."
+                    : isFailed
+                      ? "Fallo IA"
+                      : "Sin calibrar"
               }
               style={{
                 marginLeft: 4,
@@ -5274,9 +5195,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                 flexShrink: 0,
               }}
             >
-              {isActiveMeasure ? (
-                <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 5px", borderRadius: 4, background: "rgba(22,163,74,0.15)", border: "1px solid #16a34a", color: "#16a34a", lineHeight: 1 }}>OK</span>
-              ) : isCalibrated ? (
+              {isCalibrated ? (
                 isAi ? (
                   <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 4px", borderRadius: 4, background: "rgba(22,163,74,0.15)", border: "1px solid #16a34a", color: "#16a34a", lineHeight: 1 }}>IA</span>
                 ) : (
@@ -5562,9 +5481,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                                   isCalibrating={!!calibratingByUrl[mic.url]}
                                   isFailed={!!failedCalibrationByUrl[mic.url]}
                                   isAi={!!calibrationData[mic.url]?.isAi}
-                                  isActiveMeasure={
-                                    activeMicrografiaId === mic.rawId
-                                  }
                                   onClick={() =>
                                     handleClickMicrografia(mic, reg)
                                   }
@@ -5624,7 +5540,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               calibratingByUrl={calibratingByUrl}
               failedCalibrationByUrl={failedCalibrationByUrl}
               calibrationData={calibrationData}
-              highlightedByUrl={highlightedGalleryByUrl}
+              highlightedByUrl={{} as Record<string, boolean>}
               onImageClick={(img) => {
                 const isSingleMicroFromTree =
                   galleryView.kind === "micrografias" &&
