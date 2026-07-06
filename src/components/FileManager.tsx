@@ -315,6 +315,7 @@ export interface ApiMicrografia {
   pixel_length?: number;
   micrometers?: number;
   measure_imagen?: string;
+  measure_is_valid?: boolean | null;
 }
 
 // ==========================================
@@ -890,6 +891,9 @@ function ResponsiveGallery({
   calibrationData,
   companyEnabled,
   highlightedByUrl,
+  apiMicrografias,
+  measureEventsById,
+  fixImageUrl,
   onImageClick,
 }: {
   images: { name: string; url: string }[];
@@ -901,6 +905,9 @@ function ResponsiveGallery({
   calibrationData?: Record<string, CalibrationInfo>;
   companyEnabled?: boolean;
   highlightedByUrl?: Record<string, boolean>;
+  apiMicrografias: ApiMicrografia[];
+  measureEventsById: Record<string, any>;
+  fixImageUrl: (url: string | undefined | null) => string;
   onImageClick: (img: { name: string; url: string }) => void;
 }) {
   const count = images.length;
@@ -993,6 +1000,13 @@ function ResponsiveGallery({
             const isFailed = !!failedCalibrationByUrl?.[img.url];
             const hasModel = microMaterialHasModelByUrl?.[img.url] ?? true;
             const isHighlighted = !!highlightedByUrl?.[img.url];
+            
+            const mic = apiMicrografias.find((m) => String(m.id) === String(img.id) || fixImageUrl(m.imagen) === img.url);
+            const measureEvt = mic ? measureEventsById[String(mic.id)] : undefined;
+            const isChartProcessed = measureEvt ? measureEvt.status === "completed" && measureEvt.is_valid === true : mic?.measure_is_valid === true;
+            const isChartFailed = measureEvt ? measureEvt.status === "completed" && measureEvt.is_valid === false : mic?.measure_is_valid === false;
+            const isChartProcessing = !isChartProcessed && !isChartFailed;
+
             return (
               <div
                 key={`${img.url}-${i}`}
@@ -1025,10 +1039,13 @@ function ResponsiveGallery({
                       color: "white",
                       fontSize: "0.66rem",
                       fontWeight: 700,
-                      padding: "3px 8px",
+                      height: "22px",
+                      boxSizing: "border-box",
+                      padding: "0 8px",
                       borderRadius: 999,
                       display: "flex",
                       alignItems: "center",
+                      justifyContent: "center",
                       gap: 4,
                       letterSpacing: "0.02em",
                       boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
@@ -1069,6 +1086,47 @@ function ResponsiveGallery({
                           <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> Sin Calibrar
                         </span>
                       )}
+                    </span>
+                  </div>
+                )}
+                {isCalibrable && companyEnabled !== false && hasModel && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 8,
+                      left: isCalibrated || isCalibrating || isFailed ? (isCalibrated ? 64 : 58) : 8,
+                      zIndex: 2,
+                      background: isChartProcessed
+                        ? "rgba(22, 163, 74, 0.92)"
+                        : isChartFailed
+                          ? "rgba(220, 38, 38, 0.92)"
+                          : "rgba(232, 163, 23, 0.92)",
+                      color: "white",
+                      fontSize: "0.66rem",
+                      fontWeight: 700,
+                      height: "22px",
+                      boxSizing: "border-box",
+                      padding: "0 8px",
+                      borderRadius: 999,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 4,
+                      letterSpacing: "0.02em",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+                    }}
+                    title={
+                      isChartProcessed
+                        ? "Gráfico de medición disponible"
+                        : isChartProcessing
+                          ? "Procesando gráfico..."
+                          : isChartFailed
+                            ? "Fallo al generar gráfico"
+                            : "Procesando gráfico..."
+                    }
+                  >
+                    <span style={{ lineHeight: 0, display: "inline-flex" }}>
+                        <ChartIcon size={12} />
                     </span>
                   </div>
                 )}
@@ -1256,11 +1314,11 @@ const MaskIcon = () => (
     <path d="M9 15c.8 1 2 1.5 3 1.5s2.2-.5 3-1.5" />
   </svg>
 );
-const ChartIcon = () => (
+const ChartIcon = ({ size = 18 }: { size?: number }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
-    width="18"
-    height="18"
+    width={size}
+    height={size}
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
@@ -2727,7 +2785,7 @@ function ImageLightboxCarousel({
                     ? "rgba(51,158,234,0.88)"
                     : "rgba(0,0,0,0.56)",
                   color: "white",
-                  cursor: !currentMeasurementOverlayUrl ? "default" : "pointer",
+                  cursor: "pointer",
                   lineHeight: 0,
                   display: "inline-flex",
                   alignItems: "center",
@@ -2735,10 +2793,18 @@ function ImageLightboxCarousel({
                   transition: "background 0.15s",
                   opacity: currentMeasurementOverlayUrl ? 1 : 0.55,
                 }}
-                disabled={!currentMeasurementOverlayUrl}
+                disabled={false}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onToggleMeasurementOverlay?.(currentImage.url);
+                  onCheckMicrographLimit(() => {
+                    if (!(microMaterialHasModelByUrl[currentImage.url] ?? true)) {
+                      pushToast("Material no soportado.", "error", 5000);
+                      return;
+                    }
+                    if (currentMeasurementOverlayUrl) {
+                      onToggleMeasurementOverlay?.(currentImage.url);
+                    }
+                  });
                 }}
                 onMouseOver={(e) => {
                   if (!currentMeasurementOverlayUrl || isMeasurementOverlayVisible) return;
@@ -5187,6 +5253,9 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     isFailed = false,
     isAi = false,
     hasModel = true,
+    isChartProcessed = false,
+    isChartProcessing = false,
+    isChartFailed = false,
     onClick,
   }: {
     id: string;
@@ -5198,6 +5267,9 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     isFailed?: boolean;
     isAi?: boolean;
     hasModel?: boolean;
+    isChartProcessed?: boolean;
+    isChartProcessing?: boolean;
+    isChartFailed?: boolean;
     onClick: () => void;
   }) => {
     const isFolder = type !== "micrografia";
@@ -5266,16 +5338,43 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             >
               {isCalibrated ? (
                 isAi ? (
-                  <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 4px", borderRadius: 4, background: "rgba(22,163,74,0.15)", border: "1px solid #16a34a", color: "#16a34a", lineHeight: 1 }}>IA</span>
+                  <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "0 4px", height: "18px", boxSizing: "border-box", lineHeight: 1, borderRadius: 4, background: "rgba(22,163,74,0.15)", border: "1px solid #16a34a", color: "#16a34a", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>IA</span>
                 ) : (
-                  <span style={{ color: "#16a34a" }}><CheckIcon /></span>
+                  <span style={{ color: "#16a34a", display: "inline-flex", alignItems: "center", height: "18px", boxSizing: "border-box" }}><CheckIcon /></span>
                 )
               ) : isCalibrating ? (
-                <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 4px", borderRadius: 4, background: "rgba(232,163,23,0.15)", border: "1px solid #e8a317", color: "#e8a317", lineHeight: 1 }}>IA</span>
+                <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "0 4px", height: "18px", boxSizing: "border-box", lineHeight: 1, borderRadius: 4, background: "rgba(232,163,23,0.15)", border: "1px solid #e8a317", color: "#e8a317", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>IA</span>
               ) : isFailed ? (
-                <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 4px", borderRadius: 4, background: "rgba(248,113,113,0.15)", border: "1px solid #f87171", color: "#f87171", lineHeight: 1 }}>IA</span>
+                <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "0 4px", height: "18px", boxSizing: "border-box", lineHeight: 1, borderRadius: 4, background: "rgba(248,113,113,0.15)", border: "1px solid #f87171", color: "#f87171", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>IA</span>
               ) : (
-                <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "2px 4px", borderRadius: 4, background: "rgba(232,163,23,0.15)", border: "1px solid #e8a317", color: "#e8a317", lineHeight: 1 }}>IA</span>
+                <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "0 4px", height: "18px", boxSizing: "border-box", lineHeight: 1, borderRadius: 4, background: "rgba(232,163,23,0.15)", border: "1px solid #e8a317", color: "#e8a317", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>IA</span>
+              )}
+            </span>
+          )}
+          {type === "micrografia" && companyEnabled !== false && hasModel && (
+            <span
+              title={
+                isChartProcessed
+                  ? "Gráfico de medición disponible"
+                  : isChartProcessing
+                    ? "Procesando gráfico..."
+                    : isChartFailed
+                      ? "Fallo al generar gráfico"
+                      : "Procesando gráfico..."
+              }
+              style={{
+                marginLeft: 4,
+                display: "inline-flex",
+                alignItems: "center",
+                flexShrink: 0,
+              }}
+            >
+              {isChartProcessed ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px", height: "18px", boxSizing: "border-box", borderRadius: 4, background: "rgba(22,163,74,0.15)", border: "1px solid #16a34a", color: "#16a34a" }}><ChartIcon size={12}/></span>
+              ) : isChartFailed ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px", height: "18px", boxSizing: "border-box", borderRadius: 4, background: "rgba(248,113,113,0.15)", border: "1px solid #f87171", color: "#f87171" }}><ChartIcon size={12}/></span>
+              ) : (
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 4px", height: "18px", boxSizing: "border-box", borderRadius: 4, background: "rgba(232,163,23,0.15)", border: "1px solid #e8a317", color: "#e8a317" }}><ChartIcon size={12}/></span>
               )}
             </span>
           )}
@@ -5551,6 +5650,23 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                                   isFailed={!!failedCalibrationByUrl[mic.url] && (microMaterialHasModelByUrl[mic.url] ?? true)}
                                   isAi={!!calibrationData[mic.url]?.isAi && (microMaterialHasModelByUrl[mic.url] ?? true)}
                                   hasModel={microMaterialHasModelByUrl[mic.url] ?? true}
+                                  isChartProcessed={(() => {
+                                    const mApi = apiMicrografias.find(m => String(m.id) === String(mic.rawId) || fixImageUrl(m.imagen) === mic.url);
+                                    const mEvt = mApi ? measureEventsById[String(mApi.id)] : undefined;
+                                    return mEvt ? mEvt.status === "completed" && mEvt.is_valid === true : mApi?.measure_is_valid === true;
+                                  })()}
+                                  isChartFailed={(() => {
+                                    const mApi = apiMicrografias.find(m => String(m.id) === String(mic.rawId) || fixImageUrl(m.imagen) === mic.url);
+                                    const mEvt = mApi ? measureEventsById[String(mApi.id)] : undefined;
+                                    return mEvt ? mEvt.status === "completed" && mEvt.is_valid === false : mApi?.measure_is_valid === false;
+                                  })()}
+                                  isChartProcessing={(() => {
+                                    const mApi = apiMicrografias.find(m => String(m.id) === String(mic.rawId) || fixImageUrl(m.imagen) === mic.url);
+                                    const mEvt = mApi ? measureEventsById[String(mApi.id)] : undefined;
+                                    const processed = mEvt ? mEvt.status === "completed" && mEvt.is_valid === true : mApi?.measure_is_valid === true;
+                                    const failed = mEvt ? mEvt.status === "completed" && mEvt.is_valid === false : mApi?.measure_is_valid === false;
+                                    return !processed && !failed;
+                                  })()}
                                   onClick={() =>
                                     handleClickMicrografia(mic, reg)
                                   }
@@ -5612,6 +5728,9 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               calibrationData={calibrationData}
               microMaterialHasModelByUrl={microMaterialHasModelByUrl}
               highlightedByUrl={{} as Record<string, boolean>}
+              apiMicrografias={apiMicrografias}
+              measureEventsById={measureEventsById}
+              fixImageUrl={fixImageUrl}
               onImageClick={(img) => {
                 const isSingleMicroFromTree =
                   galleryView.kind === "micrografias" &&
