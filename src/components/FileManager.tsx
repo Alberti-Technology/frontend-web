@@ -1001,7 +1001,7 @@ function ResponsiveGallery({
             const hasModel = microMaterialHasModelByUrl?.[img.url] ?? true;
             const isHighlighted = !!highlightedByUrl?.[img.url];
             
-            const mic = apiMicrografias.find((m) => String(m.id) === String(img.id) || fixImageUrl(m.imagen) === img.url);
+            const mic = apiMicrografias.find((m) => fixImageUrl(m.imagen) === img.url);
             const measureEvt = mic ? measureEventsById[String(mic.id)] : undefined;
             const isChartProcessed = measureEvt ? measureEvt.status === "completed" && measureEvt.is_valid === true : mic?.measure_is_valid === true;
             const isChartFailed = measureEvt ? measureEvt.status === "completed" && measureEvt.is_valid === false : mic?.measure_is_valid === false;

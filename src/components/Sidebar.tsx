@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import altechLogo from '../../images/altech-logo-sin-fondo.svg'
+import packageJson from '../../package.json'
 
 interface SidebarProps {
   onLogoutConfirm: () => void;
@@ -8,22 +9,21 @@ interface SidebarProps {
 export default function Sidebar({ onLogoutConfirm }: SidebarProps) {
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [showLegendModal, setShowLegendModal] = useState(false)
+  const [showAboutModal, setShowAboutModal] = useState(false)
 
   return (
     <>
       <div style={styles.sidebar}>
         {/* Top: Brand Button */}
-        <a 
-          href="https://alberti-technology.vercel.app/metalurgia" 
-          target="_blank" 
-          rel="noopener noreferrer"
+        <button 
+          onClick={() => setShowAboutModal(true)}
           style={styles.brandBtn}
           title="Alberti Technology"
           onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.btnHover)}
           onMouseLeave={(e) => Object.assign(e.currentTarget.style, styles.btnNormal)}
         >
           <img src={altechLogo} alt="Alberti Technology" style={{ width: '60%', height: 'auto', minWidth: '16px' }} />
-        </a>
+        </button>
 
         {/* Middle: Info/Legend Button */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -75,6 +75,84 @@ export default function Sidebar({ onLogoutConfirm }: SidebarProps) {
           </svg>
         </button>
       </div>
+
+      {/* About Modal */}
+      {showAboutModal && (
+        <div style={styles.modalOverlay} onClick={() => setShowAboutModal(false)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h3 style={styles.modalTitle}>Acerca de MIA</h3>
+              <button 
+                style={styles.closeBtn} 
+                onClick={() => setShowAboutModal(false)}
+                onMouseEnter={(e) => Object.assign(e.currentTarget.style, { background: 'var(--bg-accent)' })}
+                onMouseLeave={(e) => Object.assign(e.currentTarget.style, { background: 'transparent' })}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div style={{ ...styles.modalBody, padding: '36px 28px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px' }}>
+              
+              {/* Logo */}
+              <div style={{ width: '130px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '8px 0 16px' }}>
+                <img src={altechLogo} alt="Alberti Technology" style={{ width: '100%', height: 'auto' }} />
+              </div>
+
+              {/* Version */}
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.95rem', color: '#4d6684', fontWeight: 500 }}>
+                  Versión de la aplicación: <span style={{ background: '#eef8ff', color: '#339eea', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>{packageJson.version}</span>
+                </div>
+              </div>
+
+              <div style={{ height: '1px', width: '100%', background: 'var(--border)' }}></div>
+
+              {/* Powered By */}
+              <div style={{ 
+                textAlign: 'center', 
+                fontSize: '0.95rem',
+                marginTop: '8px',
+                padding: '12px 24px',
+                background: 'linear-gradient(to right, rgba(51,158,234,0.05), rgba(51,158,234,0.1), rgba(51,158,234,0.05))',
+                borderRadius: '16px',
+                color: '#4d6684',
+                fontWeight: 500,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                Powered by
+                <a 
+                  href="https://alberti-technology.vercel.app/metalurgia"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ 
+                    color: '#339eea', 
+                    textDecoration: 'none', 
+                    fontWeight: 800,
+                    position: 'relative',
+                    transition: 'all 0.3s ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.textShadow = '0 0 12px rgba(51,158,234,0.6)';
+                    e.currentTarget.style.color = '#0d5a91';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.textShadow = 'none';
+                    e.currentTarget.style.color = '#339eea';
+                  }}
+                >
+                  Alberti Technology
+                  <div style={{ position: 'absolute', bottom: '-2px', left: 0, width: '100%', height: '2px', background: 'currentColor', borderRadius: '2px' }}></div>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Logout Modal */}
       {showLogoutModal && (
