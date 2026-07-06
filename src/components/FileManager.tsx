@@ -1003,7 +1003,7 @@ function ResponsiveGallery({
             
             const mic = apiMicrografias.find((m) => fixImageUrl(m.imagen) === img.url);
             const measureEvt = mic ? measureEventsById[String(mic.id)] : undefined;
-            const isChartProcessed = measureEvt ? measureEvt.status === "completed" && measureEvt.is_valid === true : mic?.measure_is_valid === true;
+            const isChartProcessed = measureEvt ? measureEvt.status === "completed" && measureEvt.is_valid === true : mic?.measure_is_valid === true || !!mic?.measure_imagen;
             const isChartFailed = measureEvt ? measureEvt.status === "completed" && measureEvt.is_valid === false : mic?.measure_is_valid === false;
             const isChartProcessing = !isChartProcessed && !isChartFailed;
 
@@ -5653,7 +5653,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                                   isChartProcessed={(() => {
                                     const mApi = apiMicrografias.find(m => String(m.id) === String(mic.rawId) || fixImageUrl(m.imagen) === mic.url);
                                     const mEvt = mApi ? measureEventsById[String(mApi.id)] : undefined;
-                                    return mEvt ? mEvt.status === "completed" && mEvt.is_valid === true : mApi?.measure_is_valid === true;
+                                    return mEvt ? mEvt.status === "completed" && mEvt.is_valid === true : mApi?.measure_is_valid === true || !!mApi?.measure_imagen;
                                   })()}
                                   isChartFailed={(() => {
                                     const mApi = apiMicrografias.find(m => String(m.id) === String(mic.rawId) || fixImageUrl(m.imagen) === mic.url);
@@ -5663,7 +5663,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
                                   isChartProcessing={(() => {
                                     const mApi = apiMicrografias.find(m => String(m.id) === String(mic.rawId) || fixImageUrl(m.imagen) === mic.url);
                                     const mEvt = mApi ? measureEventsById[String(mApi.id)] : undefined;
-                                    const processed = mEvt ? mEvt.status === "completed" && mEvt.is_valid === true : mApi?.measure_is_valid === true;
+                                    const processed = mEvt ? mEvt.status === "completed" && mEvt.is_valid === true : mApi?.measure_is_valid === true || !!mApi?.measure_imagen;
                                     const failed = mEvt ? mEvt.status === "completed" && mEvt.is_valid === false : mApi?.measure_is_valid === false;
                                     return !processed && !failed;
                                   })()}
