@@ -106,7 +106,7 @@ export default function ChatPanel() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    const socket = new WebSocket('ws://localhost:8001/ws/chat');
+    const socket = new WebSocket('wss://albertitechnology-agent-api.hf.space/ws/chat');
     ws.current = socket;
     
     socket.onopen = () => {
