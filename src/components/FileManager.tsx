@@ -14,6 +14,7 @@ import {
   connectNotificationsWebSocket,
   disconnectNotificationsWebSocket,
 } from "../services/notifications";
+import ChatPanel from "./ChatPanel";
 
 const MASK_STORAGE_KEY = "mask_cache_v2_by_micro_id";
 const MASK_LABELS_STORAGE_KEY = "mask_labels_by_micro_id";
@@ -3663,9 +3664,10 @@ function ImageLightboxCarousel({
 // ==========================================
 interface FileManagerProps {
   onLogout?: () => void;
+  isChatActive?: boolean;
 }
 
-export default function FileManager({ onLogout }: FileManagerProps) {
+export default function FileManager({ onLogout, isChatActive }: FileManagerProps) {
   const [token, setToken] = useState<string | null>(
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null,
   );
@@ -5823,6 +5825,20 @@ export default function FileManager({ onLogout }: FileManagerProps) {
           minWidth: 0,
         }}
       >
+        {isChatActive ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+            <div
+              className="px-4 py-2.5 border-b border-[#10243f1a] flex items-center"
+              style={{ flexShrink: 0 }}
+            >
+              <h3 className="text-base font-bold text-[#10243f] m-0">Chat Asistente</h3>
+            </div>
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <ChatPanel />
+            </div>
+          </div>
+        ) : (
+          <>
         <div
           className="px-4 py-2.5 border-b border-[#10243f1a] flex items-center"
           style={{ flexShrink: 0 }}
@@ -6160,6 +6176,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
             </button>
           </div>
         </div>
+        </>
+        )}
       </section>
 
       {/* Lightbox via Portal */}
