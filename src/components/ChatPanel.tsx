@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Attachment {
   name: string;
@@ -100,6 +102,7 @@ export default function ChatPanel() {
   const [editChatName, setEditChatName] = useState('');
   const [activeChatId, setActiveChatId] = useState<string>('1');
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
+  const [isWaitingForBot, setIsWaitingForBot] = useState(false);
 
   const ws = useRef<WebSocket | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -114,10 +117,18 @@ export default function ChatPanel() {
     };
     
     socket.onmessage = (event) => {
-      setMessages(prev => [...prev, { sender: 'bot', text: event.data }]);
+      setIsWaitingForBot(false);
+      try {
+        const data = JSON.parse(event.data);
+        const text = data.response || data.error || event.data;
+        setMessages(prev => [...prev, { sender: 'bot', text: String(text) }]);
+      } catch (e) {
+        setMessages(prev => [...prev, { sender: 'bot', text: event.data }]);
+      }
     };
     
     socket.onerror = (error) => {
+      setIsWaitingForBot(false);
       console.error('WebSocket error:', error);
     };
     
@@ -134,6 +145,7 @@ export default function ChatPanel() {
       textareaRef.current.style.height = '24px';
       const scrollHeight = textareaRef.current.scrollHeight;
       textareaRef.current.style.height = Math.min(scrollHeight, 120) + 'px';
+      textareaRef.current.style.overflowY = scrollHeight > 120 ? 'auto' : 'hidden';
     }
   }, [input]);
 
@@ -154,6 +166,7 @@ export default function ChatPanel() {
     
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(input);
+      setIsWaitingForBot(true);
     } else {
       console.warn("WebSocket is not connected");
     }
@@ -288,6 +301,7 @@ export default function ChatPanel() {
               </div>
             ))
           )}
+
         </div>
       </div>
 
@@ -321,8 +335,20 @@ export default function ChatPanel() {
               gap: '6px'
             }}>
               {msg.text && (
-                <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {msg.text}
+                <div style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({node, ...props}) => <p style={{ margin: '0 0 8px 0', display: 'inline-block' }} {...props} />,
+                      ul: ({node, ...props}) => <ul style={{ margin: '0 0 8px 0', paddingLeft: '20px', listStyleType: 'disc' }} {...props} />,
+                      ol: ({node, ...props}) => <ol style={{ margin: '0 0 8px 0', paddingLeft: '20px', listStyleType: 'decimal' }} {...props} />,
+                      li: ({node, ...props}) => <li style={{ marginBottom: '4px' }} {...props} />,
+                      strong: ({node, ...props}) => <strong style={{ fontWeight: 'bold' }} {...props} />,
+                      a: ({node, ...props}) => <a style={{ color: '#339eea', textDecoration: 'underline' }} {...props} />
+                    }}
+                  >
+                    {msg.text}
+                  </ReactMarkdown>
                 </div>
               )}
               {msg.attachments && msg.attachments.length > 0 && (
@@ -351,6 +377,28 @@ export default function ChatPanel() {
               )}
             </div>
           ))
+        )}
+        {isWaitingForBot && (
+          <div style={{ 
+            alignSelf: 'flex-start',
+            background: '#eef8ff',
+            color: '#10243f',
+            padding: '12px 16px',
+            borderRadius: '14px',
+            display: 'flex',
+            gap: '4px',
+            alignItems: 'center'
+          }}>
+            <div style={{ width: '6px', height: '6px', background: '#339eea', borderRadius: '50%', animation: 'typing 1.4s infinite ease-in-out both' }}></div>
+            <div style={{ width: '6px', height: '6px', background: '#339eea', borderRadius: '50%', animation: 'typing 1.4s infinite ease-in-out both', animationDelay: '0.2s' }}></div>
+            <div style={{ width: '6px', height: '6px', background: '#339eea', borderRadius: '50%', animation: 'typing 1.4s infinite ease-in-out both', animationDelay: '0.4s' }}></div>
+            <style>{`
+              @keyframes typing {
+                0%, 80%, 100% { transform: scale(0.4); opacity: 0.5; }
+                40% { transform: scale(1); opacity: 1; }
+              }
+            `}</style>
+          </div>
         )}
       </div>
       
@@ -415,6 +463,7 @@ export default function ChatPanel() {
               justifyContent: 'center',
               marginRight: '4px',
               transition: 'background 0.2s',
+              flexShrink: 0,
             }}
             title="Adjuntar archivo"
             onMouseEnter={e => e.currentTarget.style.background = '#f0f5fa'}
@@ -450,7 +499,8 @@ export default function ChatPanel() {
               minHeight: '24px',
               maxHeight: '120px',
               fontFamily: 'inherit',
-              lineHeight: '1.4'
+              lineHeight: '1.4',
+              overflowY: 'hidden'
             }}
           />
           
@@ -470,7 +520,8 @@ export default function ChatPanel() {
               marginLeft: '8px',
               transition: 'all 0.2s',
               transform: (!input.trim() && pendingAttachments.length === 0) ? 'none' : 'translateY(-1px)',
-              boxShadow: (!input.trim() && pendingAttachments.length === 0) ? 'none' : '0 4px 10px rgba(51, 158, 234, 0.3)'
+              boxShadow: (!input.trim() && pendingAttachments.length === 0) ? 'none' : '0 4px 10px rgba(51, 158, 234, 0.3)',
+              flexShrink: 0
             }}
             title="Enviar"
           >
