@@ -12,6 +12,7 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(
     () => !!localStorage.getItem('access_token')
   )
+  const [isChatActive, setIsChatActive] = useState(false)
 
   const handleLogin = useCallback(() => {
     setIsLoggedIn(true)
@@ -60,9 +61,13 @@ export default function App() {
         }}
       >
         <div style={{ gridArea: 'sidebar', height: '100%', overflow: 'hidden' }}>
-          <Sidebar onLogoutConfirm={() => api.logout()} />
+          <Sidebar 
+            onLogoutConfirm={() => api.logout()} 
+            isChatActive={isChatActive} 
+            onToggleChat={() => setIsChatActive(!isChatActive)} 
+          />
         </div>
-        <FileManager onLogout={handleLogout} />
+        <FileManager onLogout={handleLogout} isChatActive={isChatActive} />
       </div>
     </div>
   )

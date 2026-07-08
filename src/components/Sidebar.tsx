@@ -4,9 +4,11 @@ import packageJson from '../../package.json'
 
 interface SidebarProps {
   onLogoutConfirm: () => void;
+  isChatActive: boolean;
+  onToggleChat: () => void;
 }
 
-export default function Sidebar({ onLogoutConfirm }: SidebarProps) {
+export default function Sidebar({ onLogoutConfirm, isChatActive, onToggleChat }: SidebarProps) {
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [showLegendModal, setShowLegendModal] = useState(false)
   const [showAboutModal, setShowAboutModal] = useState(false)
@@ -25,8 +27,52 @@ export default function Sidebar({ onLogoutConfirm }: SidebarProps) {
           <img src={altechLogo} alt="Alberti Technology" style={{ width: '60%', height: 'auto', minWidth: '16px' }} />
         </button>
 
-        {/* Middle: Info/Legend Button */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {/* Middle Buttons */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+          {/* Chat Button */}
+          <button 
+            onClick={onToggleChat}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              background: isChatActive ? '#eef8ff' : 'transparent',
+              color: '#339eea',
+              border: 'none',
+              transition: 'all 0.2s ease',
+              cursor: 'pointer',
+              boxShadow: isChatActive ? 'inset 0 2px 4px rgba(0,0,0,0.05)' : 'none'
+            }}
+            title="Chat Asistente"
+            onMouseEnter={(e) => {
+              if (!isChatActive) e.currentTarget.style.background = '#eef8ff';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={(e) => {
+              if (!isChatActive) e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.transform = 'none';
+            }}
+          >
+            {isChatActive ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+              </svg>
+            )}
+          </button>
+
+          {/* Info/Legend Button */}
+        <div>
           <button 
             onClick={() => setShowLegendModal(true)}
             style={{
@@ -58,6 +104,7 @@ export default function Sidebar({ onLogoutConfirm }: SidebarProps) {
               <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
           </button>
+        </div>
         </div>
 
         {/* Bottom: Logout Button */}
