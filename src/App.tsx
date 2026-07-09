@@ -12,7 +12,36 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(
     () => !!localStorage.getItem('access_token')
   )
-  const [isChatActive, setIsChatActive] = useState(false)
+  
+  const [showAdmin, setShowAdmin] = useState(() => {
+    const val = localStorage.getItem('altech_show_admin');
+    return val ? val === 'true' : true;
+  });
+  const [showGallery, setShowGallery] = useState(() => {
+    const val = localStorage.getItem('altech_show_gallery');
+    return val ? val === 'true' : true;
+  });
+  const [showReports, setShowReports] = useState(() => {
+    const val = localStorage.getItem('altech_show_reports');
+    return val ? val === 'true' : true;
+  });
+  const [showAssistant, setShowAssistant] = useState(() => {
+    const val = localStorage.getItem('altech_show_assistant');
+    return val ? val === 'true' : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('altech_show_admin', String(showAdmin));
+  }, [showAdmin]);
+  useEffect(() => {
+    localStorage.setItem('altech_show_gallery', String(showGallery));
+  }, [showGallery]);
+  useEffect(() => {
+    localStorage.setItem('altech_show_reports', String(showReports));
+  }, [showReports]);
+  useEffect(() => {
+    localStorage.setItem('altech_show_assistant', String(showAssistant));
+  }, [showAssistant]);
 
   const handleLogin = useCallback(() => {
     setIsLoggedIn(true)
@@ -49,25 +78,36 @@ export default function App() {
       <div
         style={{
           flex: 1,
-          display: 'grid',
+          display: 'flex',
           width: '100%',
-          gridTemplateColumns: 'minmax(60px, 3fr) minmax(180px, 22fr) minmax(300px, 55fr) minmax(200px, 20fr)',
-          gridTemplateRows: 'minmax(0, 1fr) minmax(0, 1fr)',
-          gridTemplateAreas: `"sidebar dir gallery reports" "sidebar dir gallery reports"`,
           gap: '12px',
           height: '100%',
           minHeight: 0,
           overflow: 'hidden',
         }}
       >
-        <div style={{ gridArea: 'sidebar', height: '100%', overflow: 'hidden' }}>
+        <div style={{ width: '60px', flexShrink: 0, height: '100%', overflow: 'hidden' }}>
           <Sidebar 
             onLogoutConfirm={() => api.logout()} 
-            isChatActive={isChatActive} 
-            onToggleChat={() => setIsChatActive(!isChatActive)} 
+            showAdmin={showAdmin}
+            onToggleAdmin={() => setShowAdmin(!showAdmin)}
+            showGallery={showGallery}
+            onToggleGallery={() => setShowGallery(!showGallery)}
+            showReports={showReports}
+            onToggleReports={() => setShowReports(!showReports)}
+            showAssistant={showAssistant}
+            onToggleAssistant={() => setShowAssistant(!showAssistant)}
           />
         </div>
-        <FileManager onLogout={handleLogout} isChatActive={isChatActive} />
+        <div style={{ flex: 1, minWidth: 0, height: '100%' }}>
+          <FileManager 
+            onLogout={handleLogout} 
+            showAdmin={showAdmin}
+            showGallery={showGallery}
+            showReports={showReports}
+            showAssistant={showAssistant}
+          />
+        </div>
       </div>
     </div>
   )

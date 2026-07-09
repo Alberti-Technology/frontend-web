@@ -873,34 +873,11 @@ function ResponsiveGallery({
   const count = images.length;
   if (count === 0) {
     return (
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexDirection: "column",
-          color: "#4d6684",
-        }}
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="48"
-          height="48"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ opacity: 0.3, marginBottom: 12 }}
-        >
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-          <circle cx="8.5" cy="8.5" r="1.5"></circle>
-          <polyline points="21 15 16 10 5 21"></polyline>
-        </svg>
-        <p style={{ fontSize: "0.875rem", fontWeight: 500 }}>
+      <div className="flex flex-col items-center justify-center absolute inset-0 opacity-70 p-4 text-center">
+        <div className="text-[#9ca3af] mb-3">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+        </div>
+        <p className="text-[#6b7280] text-[0.9rem] italic m-0">
           Seleccione un elemento para ver las imágenes.
         </p>
       </div>
@@ -3618,18 +3595,43 @@ function ImageLightboxCarousel({
   );
 }
 
+import { Group, Panel, Separator } from "react-resizable-panels";
+
+function ResizeHandle() {
+  return (
+    <Separator
+      className="flex items-center justify-center w-2 group cursor-col-resize hover:bg-[#339eea11] transition-colors z-10"
+      style={{ position: 'relative', width: '8px' }}
+    >
+      <div className="w-1 h-8 rounded-full bg-[#339eea44] group-hover:bg-[#339eea] transition-colors" />
+    </Separator>
+  );
+}
+
 // ==========================================
 // MAIN COMPONENT
 // ==========================================
 interface FileManagerProps {
   onLogout?: () => void;
-  isChatActive?: boolean;
+  showAdmin?: boolean;
+  showGallery?: boolean;
+  showReports?: boolean;
+  showAssistant?: boolean;
 }
 
-export default function FileManager({ onLogout, isChatActive }: FileManagerProps) {
+export default function FileManager({ 
+  onLogout, 
+  showAdmin = true,
+  showGallery = true,
+  showReports = true,
+  showAssistant = true
+}: FileManagerProps) {
   const [token, setToken] = useState<string | null>(
     typeof window !== "undefined" ? localStorage.getItem("access_token") : null,
   );
+
+  const [showAdminLegend, setShowAdminLegend] = useState(false);
+  const [showGalleryLegend, setShowGalleryLegend] = useState(false);
 
   const [companyEnabled, setCompanyEnabled] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
@@ -5432,33 +5434,61 @@ export default function FileManager({ onLogout, isChatActive }: FileManagerProps
   const informesListIsEmpty = pdfHistory.length === 0 && !pdfStatusMessage;
   const muestrasListIsEmpty = apiMuestras.length === 0;
 
+  if (!showAdmin && !showGallery && !showReports && !showAssistant) {
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-white rounded-2xl border border-[#10243f14] shadow-sm">
+        <div className="text-center opacity-70 flex flex-col items-center">
+          <div className="text-[#9ca3af] mb-3">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"></path><polyline points="14 2 14 8 20 8"></polyline><path d="M2 15h10"></path><path d="M9 18l3-3-3-3"></path></svg>
+          </div>
+          <p className="text-[#6b7280] text-[0.9rem] italic m-0">
+            Elija la sección que quiera ver desde la barra lateral izquierda
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "contents" }}>
-      {/* ======== ISLAND 1: DIRECTORY (grid-area: dir) ======== */}
-      <div
-        className="island"
-        style={{
-          gridArea: "dir",
-          position: "relative",
-          background: "#ffffff",
-          display: "grid",
-          gridTemplateRows: "auto minmax(0, 1fr)",
-          height: "100%",
-          minHeight: 0,
-          overflow: "hidden",
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          closeMenu();
-        }}
+      <Group 
+        orientation="horizontal" 
+        style={{ height: "100%", width: "100%" }}
       >
+      {showAdmin && (
+        <Panel minSize={15} collapsible={false} defaultSize={25}>
+          {/* ======== ISLAND 1: DIRECTORY ======== */}
+          <div
+            className="island"
+            style={{
+              position: "relative",
+              background: "#ffffff",
+              display: "grid",
+              gridTemplateRows: "auto minmax(0, 1fr)",
+              height: "100%",
+              minHeight: 0,
+              minWidth: 0,
+              overflow: "hidden",
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              closeMenu();
+            }}
+          >
         <div
-          className="px-4 py-2.5 border-b border-[#10243f1a] flex items-center"
+          className="px-4 py-2.5 border-b border-[#10243f1a] flex justify-between items-center"
           style={{ flexShrink: 0 }}
         >
-          <h3 className="text-base font-bold text-[#10243f] m-0">
-            Administrador
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-bold text-[#10243f] m-0">Administrador</h3>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setShowAdminLegend(true); }}
+              className="flex items-center justify-center w-7 h-7 rounded-lg bg-transparent border-none text-[#339eea] cursor-pointer transition-all hover:bg-[#eef8ff] hover:-translate-y-0.5"
+              title="Leyenda de íconos"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            </button>
+          </div>
         </div>
 
         {/* Scrollable tree */}
@@ -5625,25 +5655,40 @@ export default function FileManager({ onLogout, isChatActive }: FileManagerProps
           ))}
         </div>
       </div>
-
-      {/* ======== ISLAND 2: GALLERY (grid-area: gallery) ======== */}
-      <div
-        className="island"
-        style={{
-          gridArea: "gallery",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-        }}
-        onClick={closeMenu}
-      >
+        </Panel>
+      )}
+      {showAdmin && (showGallery || showReports || showAssistant) && <ResizeHandle />}
+      
+      {showGallery && (
+        <Panel minSize={15} collapsible={false} defaultSize={35}>
+          {/* ======== ISLAND 2: GALLERY ======== */}
+          <div
+            className="island"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              height: "100%",
+              minWidth: 0,
+            }}
+            onClick={closeMenu}
+          >
         <div
           className="px-4 py-2.5 border-b border-[#10243f1a] flex justify-between items-center"
           style={{ flexShrink: 0 }}
         >
-          <h3 className="text-base font-bold text-[#10243f] m-0">
-            {galleryTitle}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-bold text-[#10243f] m-0">
+              {galleryTitle}
+            </h3>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setShowGalleryLegend(true); }}
+              className="flex items-center justify-center w-7 h-7 rounded-lg bg-transparent border-none text-[#339eea] cursor-pointer transition-all hover:bg-[#eef8ff] hover:-translate-y-0.5"
+              title="Leyenda de íconos"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            </button>
+          </div>
           <span className="text-[10px] font-bold bg-[#dff1ff] text-[#339eea] py-1 px-2.5 rounded-full">
             {galleryImages.length} imágenes
           </span>
@@ -5691,12 +5736,13 @@ export default function FileManager({ onLogout, isChatActive }: FileManagerProps
           </div>
         </div>
       </div>
+      </Panel>
+      )}
 
       {/* ======== UPLOAD PROGRESS BANNER ======== */}
       {uploadProgress && (
         <div
           style={{
-            gridArea: "gallery",
             position: "fixed",
             top: "50%",
             left: "50%",
@@ -5753,37 +5799,27 @@ export default function FileManager({ onLogout, isChatActive }: FileManagerProps
         </div>
       )}
 
-      {/* ======== ISLAND: INFORMES (grid-area: reports) ======== */}
-      <section
-        className="island"
-        style={{
-          gridArea: "reports",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          minWidth: 0,
-        }}
-      >
-        {isChatActive ? (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* ======== ISLAND 3: INFORMES ======== */}
+      {showGallery && (showReports || showAssistant) && <ResizeHandle />}
+      
+      {showReports && (
+        <Panel minSize={15} collapsible={false} defaultSize={15}>
+          <section
+            className="island"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              minWidth: 0,
+              height: "100%",
+            }}
+          >
             <div
               className="px-4 py-2.5 border-b border-[#10243f1a] flex items-center"
               style={{ flexShrink: 0 }}
             >
-              <h3 className="text-base font-bold text-[#10243f] m-0">Chat Asistente</h3>
+              <h3 className="text-base font-bold text-[#10243f] m-0">Informes</h3>
             </div>
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <ChatPanel />
-            </div>
-          </div>
-        ) : (
-          <>
-        <div
-          className="px-4 py-2.5 border-b border-[#10243f1a] flex items-center"
-          style={{ flexShrink: 0 }}
-        >
-          <h3 className="text-base font-bold text-[#10243f] m-0">Informes</h3>
-        </div>
 
         <div
           style={{
@@ -5831,20 +5867,11 @@ export default function FileManager({ onLogout, isChatActive }: FileManagerProps
               }}
             >
               {informesListIsEmpty ? (
-                <div
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    textAlign: "center",
-                    fontSize: "0.86rem",
-                    color: "#4d6684",
-                    fontStyle: "italic",
-                    padding: "8px",
-                  }}
-                >
-                  Aún no hay informes que mostrar.
+                <div className="flex flex-col items-center justify-center flex-1 text-center opacity-70 p-2">
+                  <div className="text-[#9ca3af] mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                  </div>
+                  <span className="text-[#6b7280] text-[0.9rem] italic m-0">Aún no hay informes que mostrar.</span>
                 </div>
               ) : (
                 <>
@@ -5933,20 +5960,11 @@ export default function FileManager({ onLogout, isChatActive }: FileManagerProps
               }}
             >
               {muestrasListIsEmpty ? (
-                <div
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    textAlign: "center",
-                    fontSize: "0.86rem",
-                    color: "#4d6684",
-                    fontStyle: "italic",
-                    padding: "8px",
-                  }}
-                >
-                  Aún no hay muestras que mostrar.
+                <div className="flex flex-col items-center justify-center flex-1 text-center opacity-70 p-2">
+                  <div className="text-[#9ca3af] mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                  </div>
+                  <span className="text-[#6b7280] text-[0.9rem] italic m-0">Aún no hay muestras que mostrar.</span>
                 </div>
               ) : (
                 <div
@@ -6115,9 +6133,40 @@ export default function FileManager({ onLogout, isChatActive }: FileManagerProps
             </button>
           </div>
         </div>
-        </>
-        )}
       </section>
+      </Panel>
+      )}
+
+      {showReports && showAssistant && <ResizeHandle />}
+
+      {/* ======== ISLAND 4: ASSISTANT ======== */}
+      {showAssistant && (
+        <Panel minSize={15} collapsible={false} defaultSize={25}>
+          <section
+            className="island"
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              minWidth: 0,
+              height: "100%",
+            }}
+          >
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <div
+                className="px-4 py-2.5 border-b border-[#10243f1a] flex items-center"
+                style={{ flexShrink: 0 }}
+              >
+                <h3 className="text-base font-bold text-[#10243f] m-0">Asistente</h3>
+              </div>
+              <div style={{ flex: 1, overflow: 'hidden' }}>
+                <ChatPanel />
+              </div>
+            </div>
+          </section>
+        </Panel>
+      )}
+    </Group>
 
       {/* Lightbox via Portal */}
       {lightboxIndex !== null &&
@@ -6411,6 +6460,120 @@ export default function FileManager({ onLogout, isChatActive }: FileManagerProps
           </div>,
           document.body,
         )}
+
+      {showAdminLegend && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+          <div className="absolute inset-0 bg-[#10243f66] backdrop-blur-sm" onClick={() => setShowAdminLegend(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl border border-[#10243f14] w-[400px] overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-[#f8fbff]">
+              <h3 className="m-0 text-[#10243f] text-lg font-bold">Leyenda Administrador</h3>
+              <button onClick={() => setShowAdminLegend(false)} className="text-gray-400 hover:text-gray-600 bg-transparent border-none cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(22,163,74,0.15)', border: '1px solid #16a34a', color: '#16a34a', lineHeight: 1 }}>IA</span>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibración exitosa</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(232,163,23,0.15)', border: '1px solid #e8a317', color: '#e8a317', lineHeight: 1 }}>IA</span>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibrando (o en cola)</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(248,113,113,0.15)', border: '1px solid #f87171', color: '#f87171', lineHeight: 1 }}>IA</span>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Error en autocalibración</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ color: '#16a34a', padding: '2px 4px', display: 'flex' }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  </span>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Calibración Manual exitosa</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ display: "flex", padding: "2px", borderRadius: 4, background: "rgba(22,163,74,0.15)", border: "1px solid #16a34a", color: "#16a34a", lineHeight: 1 }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 16l4-4 3 3 6-7" /></svg>
+                  </span>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Gráfico de medición disponible</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ display: "flex", padding: "2px", borderRadius: 4, background: "rgba(232,163,23,0.15)", border: "1px solid #e8a317", color: "#e8a317", lineHeight: 1 }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 16l4-4 3 3 6-7" /></svg>
+                  </span>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Procesando gráfico...</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ display: "flex", padding: "2px", borderRadius: 4, background: "rgba(248,113,113,0.15)", border: "1px solid #f87171", color: "#f87171", lineHeight: 1 }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 16l4-4 3 3 6-7" /></svg>
+                  </span>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Fallo al generar gráfico</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showGalleryLegend && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+          <div className="absolute inset-0 bg-[#10243f66] backdrop-blur-sm" onClick={() => setShowGalleryLegend(false)} />
+          <div className="relative bg-white rounded-2xl shadow-xl border border-[#10243f14] w-[400px] overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-[#f8fbff]">
+              <h3 className="m-0 text-[#10243f] text-lg font-bold">Leyenda Galería</h3>
+              <button onClick={() => setShowGalleryLegend(false)} className="text-gray-400 hover:text-gray-600 bg-transparent border-none cursor-pointer">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ background: 'rgba(22, 163, 74, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> IA
+                  </div>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibración exitosa</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ background: 'rgba(232, 163, 23, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> IA
+                  </div>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibrando (o en cola)</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ background: 'rgba(220, 38, 38, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> IA
+                  </div>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Error en autocalibración</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ background: 'rgba(22, 163, 74, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> CM
+                  </div>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Calibración Manual exitosa</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ background: 'rgba(22, 163, 74, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 16l4-4 3 3 6-7" /></svg>
+                  </div>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Gráfico de medición disponible</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ background: 'rgba(232, 163, 23, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 16l4-4 3 3 6-7" /></svg>
+                  </div>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Procesando gráfico...</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ background: 'rgba(220, 38, 38, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 16l4-4 3 3 6-7" /></svg>
+                  </div>
+                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Fallo al generar gráfico</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showDisabledCompanyModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center">
