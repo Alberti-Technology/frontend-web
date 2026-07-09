@@ -142,7 +142,12 @@ export default function ChatPanel() {
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = '24px';
+      if (!input) {
+        textareaRef.current.style.height = 'auto';
+        textareaRef.current.style.overflowY = 'hidden';
+        return;
+      }
+      textareaRef.current.style.height = 'auto';
       const scrollHeight = textareaRef.current.scrollHeight;
       textareaRef.current.style.height = Math.min(scrollHeight, 120) + 'px';
       textareaRef.current.style.overflowY = scrollHeight > 120 ? 'auto' : 'hidden';
@@ -318,7 +323,7 @@ export default function ChatPanel() {
       }}>
         {messages.length === 0 ? (
           <div style={{ margin: 'auto', color: '#4d6684', fontStyle: 'italic', fontSize: '0.86rem' }}>
-            Inicia una conversación con la IA.
+            Inicia una conversación con nuestro asistente de IA.
           </div>
         ) : (
           messages.map((msg, idx) => (
@@ -488,6 +493,7 @@ export default function ChatPanel() {
             value={input} 
             onChange={e => setInput(e.target.value)}
             placeholder="Escribe un mensaje..."
+            rows={1}
             style={{
               flex: 1,
               padding: '8px 4px',

@@ -4,13 +4,25 @@ import packageJson from '../../package.json'
 
 interface SidebarProps {
   onLogoutConfirm: () => void;
-  isChatActive: boolean;
-  onToggleChat: () => void;
+  showAdmin: boolean;
+  onToggleAdmin: () => void;
+  showGallery: boolean;
+  onToggleGallery: () => void;
+  showReports: boolean;
+  onToggleReports: () => void;
+  showAssistant: boolean;
+  onToggleAssistant: () => void;
 }
 
-export default function Sidebar({ onLogoutConfirm, isChatActive, onToggleChat }: SidebarProps) {
+export default function Sidebar({ 
+  onLogoutConfirm, 
+  showAdmin, onToggleAdmin,
+  showGallery, onToggleGallery,
+  showReports, onToggleReports,
+  showAssistant, onToggleAssistant
+}: SidebarProps) {
   const [showLogoutModal, setShowLogoutModal] = useState(false)
-  const [showLegendModal, setShowLegendModal] = useState(false)
+
   const [showAboutModal, setShowAboutModal] = useState(false)
 
   return (
@@ -29,9 +41,9 @@ export default function Sidebar({ onLogoutConfirm, isChatActive, onToggleChat }:
 
         {/* Middle Buttons */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
-          {/* Chat Button */}
+          {/* Admin Button */}
           <button 
-            onClick={onToggleChat}
+            onClick={onToggleAdmin}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -39,71 +51,133 @@ export default function Sidebar({ onLogoutConfirm, isChatActive, onToggleChat }:
               width: '42px',
               height: '42px',
               borderRadius: '12px',
-              background: isChatActive ? '#eef8ff' : 'transparent',
+              background: showAdmin ? '#eef8ff' : 'transparent',
               color: '#339eea',
               border: 'none',
               transition: 'all 0.2s ease',
               cursor: 'pointer',
-              boxShadow: isChatActive ? 'inset 0 2px 4px rgba(0,0,0,0.05)' : 'none'
+              boxShadow: showAdmin ? 'inset 0 2px 4px rgba(0,0,0,0.05)' : 'none'
             }}
-            title="Chat Asistente"
+            title="Administrador"
             onMouseEnter={(e) => {
-              if (!isChatActive) e.currentTarget.style.background = '#eef8ff';
+              if (!showAdmin) e.currentTarget.style.background = '#eef8ff';
               e.currentTarget.style.transform = 'translateY(-2px)';
             }}
             onMouseLeave={(e) => {
-              if (!isChatActive) e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.transform = 'none';
-            }}
-          >
-            {isChatActive ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="16" y1="13" x2="8" y2="13"></line>
-                <line x1="16" y1="17" x2="8" y2="17"></line>
-                <polyline points="10 9 9 9 8 9"></polyline>
-              </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-              </svg>
-            )}
-          </button>
-
-          {/* Info/Legend Button */}
-        <div>
-          <button 
-            onClick={() => setShowLegendModal(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
-              background: 'transparent',
-              color: '#339eea',
-              border: 'none',
-              transition: 'all 0.2s ease',
-              cursor: 'pointer',
-            }}
-            title="Leyenda de iconos"
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#eef8ff';
-              e.currentTarget.style.transform = 'translateY(-2px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'transparent';
+              if (!showAdmin) e.currentTarget.style.background = 'transparent';
               e.currentTarget.style.transform = 'none';
             }}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
           </button>
+
+          {/* Gallery Button */}
+          <button 
+            onClick={onToggleGallery}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              background: showGallery ? '#eef8ff' : 'transparent',
+              color: '#339eea',
+              border: 'none',
+              transition: 'all 0.2s ease',
+              cursor: 'pointer',
+              boxShadow: showGallery ? 'inset 0 2px 4px rgba(0,0,0,0.05)' : 'none'
+            }}
+            title="Galería"
+            onMouseEnter={(e) => {
+              if (!showGallery) e.currentTarget.style.background = '#eef8ff';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={(e) => {
+              if (!showGallery) e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.transform = 'none';
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+          </button>
+
+          {/* Reports Button */}
+          <button 
+            onClick={onToggleReports}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              background: showReports ? '#eef8ff' : 'transparent',
+              color: '#339eea',
+              border: 'none',
+              transition: 'all 0.2s ease',
+              cursor: 'pointer',
+              boxShadow: showReports ? 'inset 0 2px 4px rgba(0,0,0,0.05)' : 'none'
+            }}
+            title="Informes"
+            onMouseEnter={(e) => {
+              if (!showReports) e.currentTarget.style.background = '#eef8ff';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={(e) => {
+              if (!showReports) e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.transform = 'none';
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+          </button>
+
+          {/* Assistant Button */}
+          <button 
+            onClick={onToggleAssistant}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              background: showAssistant ? '#eef8ff' : 'transparent',
+              color: '#339eea',
+              border: 'none',
+              transition: 'all 0.2s ease',
+              cursor: 'pointer',
+              boxShadow: showAssistant ? 'inset 0 2px 4px rgba(0,0,0,0.05)' : 'none'
+            }}
+            title="Chat Asistente"
+            onMouseEnter={(e) => {
+              if (!showAssistant) e.currentTarget.style.background = '#eef8ff';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={(e) => {
+              if (!showAssistant) e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.transform = 'none';
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </button>
+
+          {/* Info/Legend Button */}
+        <div>
+
         </div>
         </div>
 
@@ -244,123 +318,6 @@ export default function Sidebar({ onLogoutConfirm, isChatActive, onToggleChat }:
               >
                 Cerrar sesión
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Legend Modal */}
-      {showLegendModal && (
-        <div style={styles.modalOverlay} onClick={() => setShowLegendModal(false)}>
-          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <h3 style={styles.modalTitle}>Leyenda de Íconos</h3>
-              <button 
-                style={styles.closeBtn} 
-                onClick={() => setShowLegendModal(false)}
-                onMouseEnter={(e) => Object.assign(e.currentTarget.style, { background: 'var(--bg-accent)' })}
-                onMouseLeave={(e) => Object.assign(e.currentTarget.style, { background: 'transparent' })}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
-            </div>
-            <div style={{ ...styles.modalBody, padding: '20px 28px', maxHeight: '60vh', overflowY: 'auto' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div>
-                  <h4 style={{ margin: '0 0 12px 0', color: '#10243f', fontSize: '0.95rem', fontWeight: 700 }}>Administrador de archivos</h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(22,163,74,0.15)', border: '1px solid #16a34a', color: '#16a34a', lineHeight: 1 }}>IA</span>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibración exitosa</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(232,163,23,0.15)', border: '1px solid #e8a317', color: '#e8a317', lineHeight: 1 }}>IA</span>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibrando (o en cola)</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(248,113,113,0.15)', border: '1px solid #f87171', color: '#f87171', lineHeight: 1 }}>IA</span>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Error en autocalibración</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ color: '#16a34a', padding: '2px 4px', display: 'flex' }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                      </span>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Calibración Manual exitosa</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ display: "flex", padding: "2px", borderRadius: 4, background: "rgba(22,163,74,0.15)", border: "1px solid #16a34a", color: "#16a34a", lineHeight: 1 }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 16l4-4 3 3 6-7" /></svg>
-                      </span>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Gráfico de medición disponible</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ display: "flex", padding: "2px", borderRadius: 4, background: "rgba(232,163,23,0.15)", border: "1px solid #e8a317", color: "#e8a317", lineHeight: 1 }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 16l4-4 3 3 6-7" /></svg>
-                      </span>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Procesando gráfico...</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ display: "flex", padding: "2px", borderRadius: 4, background: "rgba(248,113,113,0.15)", border: "1px solid #f87171", color: "#f87171", lineHeight: 1 }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 16l4-4 3 3 6-7" /></svg>
-                      </span>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Fallo al generar gráfico</span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0' }} />
-                
-                <div>
-                  <h4 style={{ margin: '0 0 12px 0', color: '#10243f', fontSize: '0.95rem', fontWeight: 700 }}>Galería de imágenes</h4>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ background: 'rgba(22, 163, 74, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> IA
-                      </div>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibración exitosa</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ background: 'rgba(232, 163, 23, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> IA
-                      </div>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibrando (o en cola)</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ background: 'rgba(220, 38, 38, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> IA
-                      </div>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Error en autocalibración</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ background: 'rgba(22, 163, 74, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> CM
-                      </div>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Calibración Manual exitosa</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ background: 'rgba(22, 163, 74, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 16l4-4 3 3 6-7" /></svg>
-                      </div>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Gráfico de medición disponible</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ background: 'rgba(232, 163, 23, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 16l4-4 3 3 6-7" /></svg>
-                      </div>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Procesando gráfico...</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ background: 'rgba(220, 38, 38, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="M7 16l4-4 3 3 6-7" /></svg>
-                      </div>
-                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Fallo al generar gráfico</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
