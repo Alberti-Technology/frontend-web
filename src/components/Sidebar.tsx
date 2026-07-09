@@ -160,7 +160,7 @@ export default function Sidebar({
               cursor: 'pointer',
               boxShadow: showAssistant ? 'inset 0 2px 4px rgba(0,0,0,0.05)' : 'none'
             }}
-            title="Chat Asistente"
+            title="Asistente"
             onMouseEnter={(e) => {
               if (!showAssistant) e.currentTarget.style.background = '#eef8ff';
               e.currentTarget.style.transform = 'translateY(-2px)';

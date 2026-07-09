@@ -914,34 +914,11 @@ function ResponsiveGallery({
   const count = images.length;
   if (count === 0) {
     return (
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexDirection: "column",
-          color: "#4d6684",
-        }}
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="48"
-          height="48"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ opacity: 0.3, marginBottom: 12 }}
-        >
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-          <circle cx="8.5" cy="8.5" r="1.5"></circle>
-          <polyline points="21 15 16 10 5 21"></polyline>
-        </svg>
-        <p style={{ fontSize: "0.875rem", fontWeight: 500 }}>
+      <div className="flex flex-col items-center justify-center absolute inset-0 opacity-70 p-4 text-center">
+        <div className="text-[#9ca3af] mb-3">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+        </div>
+        <p className="text-[#6b7280] text-[0.9rem] italic m-0">
           Seleccione un elemento para ver las imágenes.
         </p>
       </div>
@@ -5551,7 +5528,7 @@ export default function FileManager({
               gridTemplateRows: "auto minmax(0, 1fr)",
               height: "100%",
               minHeight: 0,
-              minWidth: "250px",
+              minWidth: 0,
               overflow: "hidden",
             }}
             onClick={(e) => {
@@ -5753,7 +5730,7 @@ export default function FileManager({
               flexDirection: "column",
               overflow: "hidden",
               height: "100%",
-              minWidth: "250px",
+              minWidth: 0,
             }}
             onClick={closeMenu}
           >
@@ -5894,7 +5871,7 @@ export default function FileManager({
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              minWidth: "250px",
+              minWidth: 0,
               height: "100%",
             }}
           >
@@ -5951,20 +5928,11 @@ export default function FileManager({
               }}
             >
               {informesListIsEmpty ? (
-                <div
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    textAlign: "center",
-                    fontSize: "0.86rem",
-                    color: "#4d6684",
-                    fontStyle: "italic",
-                    padding: "8px",
-                  }}
-                >
-                  Aún no hay informes que mostrar.
+                <div className="flex flex-col items-center justify-center flex-1 text-center opacity-70 p-2">
+                  <div className="text-[#9ca3af] mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                  </div>
+                  <span className="text-[#6b7280] text-[0.9rem] italic m-0">Aún no hay informes que mostrar.</span>
                 </div>
               ) : (
                 <>
@@ -6053,20 +6021,11 @@ export default function FileManager({
               }}
             >
               {muestrasListIsEmpty ? (
-                <div
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    textAlign: "center",
-                    fontSize: "0.86rem",
-                    color: "#4d6684",
-                    fontStyle: "italic",
-                    padding: "8px",
-                  }}
-                >
-                  Aún no hay muestras que mostrar.
+                <div className="flex flex-col items-center justify-center flex-1 text-center opacity-70 p-2">
+                  <div className="text-[#9ca3af] mb-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                  </div>
+                  <span className="text-[#6b7280] text-[0.9rem] italic m-0">Aún no hay muestras que mostrar.</span>
                 </div>
               ) : (
                 <div
@@ -6250,7 +6209,7 @@ export default function FileManager({
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
-              minWidth: "250px",
+              minWidth: 0,
               height: "100%",
             }}
           >
@@ -6259,7 +6218,7 @@ export default function FileManager({
                 className="px-4 py-2.5 border-b border-[#10243f1a] flex items-center"
                 style={{ flexShrink: 0 }}
               >
-                <h3 className="text-base font-bold text-[#10243f] m-0">Chat Asistente</h3>
+                <h3 className="text-base font-bold text-[#10243f] m-0">Asistente</h3>
               </div>
               <div style={{ flex: 1, overflow: 'hidden' }}>
                 <ChatPanel />
