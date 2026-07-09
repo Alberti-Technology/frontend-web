@@ -1,3 +1,5 @@
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import React, {
   useState,
   useRef,
@@ -1448,6 +1450,8 @@ export function ImageLightboxCarousel({
   const [activeSidebarTool, setActiveSidebarTool] = useState<
     "overview" | "calibration" | "measurement" | "mask"
   >("overview");
+  const [micrographAnalysis, setMicrographAnalysis] = useState("");
+  const [isAnalyzingMicrograph, setIsAnalyzingMicrograph] = useState(false);
   const [pixelLength, setPixelLength] = useState(0);
   const [detectedPixelLength, setDetectedPixelLength] = useState(0);
   const [hoveredInclusion, setHoveredInclusion] = useState<{
@@ -1531,6 +1535,69 @@ export function ImageLightboxCarousel({
     setDrawByImageUrl(readDrawCacheStore());
   }, []);
 
+  // ---- Micrograph AI Assistant ----
+  useEffect(() => {
+    if (!currentImage) return;
+    
+    setMicrographAnalysis("");
+    setIsAnalyzingMicrograph(true);
+    
+    // ---- Mockup Temporario (borrar cuando esté el backend) ----
+    const mockAnalysis = "Basado en la micrografía, se observa una estructura predominante de **ferrita** y **perlita**. \n\n* **Ferrita**: Granos claros, poligonales, equiaxiales.\n* **Perlita**: Áreas oscuras, colonias lamelares.\n\nEl tamaño de grano estimado ronda los ASTM 6-7, típico de aceros de bajo-medio carbono normalizados o recocidos.";
+    
+    let currentIndexMock = 0;
+    const interval = setInterval(() => {
+      if (currentIndexMock === 0) setIsAnalyzingMicrograph(false);
+      
+      currentIndexMock++;
+      setMicrographAnalysis(mockAnalysis.slice(0, currentIndexMock));
+      
+      if (currentIndexMock >= mockAnalysis.length) {
+        clearInterval(interval);
+      }
+    }, 20); // typing speed
+    
+    return () => clearInterval(interval);
+    // ---- Fin Mockup Temporario ----
+    
+    /* 
+    // ---- Código Real de Conexión (descomentar cuando el backend esté listo) ----
+    const socket = new WebSocket('wss://albertitechnology-agent-api.hf.space/ws/analysis');
+    
+    socket.onopen = () => {
+      socket.send(JSON.stringify({ 
+        action: "analyze", 
+        imageId: currentImage.id || currentImage.name
+      }));
+    };
+    
+    socket.onmessage = (event) => {
+      setIsAnalyzingMicrograph(false);
+      try {
+        const data = JSON.parse(event.data);
+        if (data.response) {
+          setMicrographAnalysis(prev => prev + data.response);
+        } else if (data.error) {
+          setMicrographAnalysis(`Error: ${data.error}`);
+        }
+      } catch (e) {
+        setMicrographAnalysis(prev => prev + event.data);
+      }
+    };
+    
+    socket.onerror = (error) => {
+      setIsAnalyzingMicrograph(false);
+      console.error("Analysis WebSocket error:", error);
+    };
+    
+    return () => {
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+        socket.close();
+      }
+    };
+    // ---- Fin Código Real ----
+    */
+  }, [currentImage]);
   const hasSiblingImages = images.length > 1;
   const currentImageIsCalibrable = !!calibrableByUrl[currentImage.url];
   const hasCalibration = !!calibrationData[currentImage.url];
@@ -2358,43 +2425,6 @@ export function ImageLightboxCarousel({
         userSelect: "none",
       }}
     >
-      {/* Top toolbar */}
-      <div
-        style={{
-          position: "absolute",
-          top: 16,
-          right: 16,
-          zIndex: 10,
-          display: "flex",
-          gap: 10,
-          alignItems: "center",
-        }}
-      >
-        {/* Close button */}
-        <button
-          title="Cerrar"
-          style={{
-            background: "rgba(0,0,0,0.5)",
-            border: "none",
-            borderRadius: "50%",
-            padding: 8,
-            cursor: "pointer",
-            color: "white",
-            lineHeight: 0,
-            transition: "background 0.15s",
-          }}
-          onClick={onClose}
-          onMouseOver={(e) =>
-            (e.currentTarget.style.background = "rgba(0,0,0,0.8)")
-          }
-          onMouseOut={(e) =>
-            (e.currentTarget.style.background = "rgba(0,0,0,0.5)")
-          }
-        >
-          <CloseIcon />
-        </button>
-      </div>
-
       {/* ===== Image centered in viewport (offset left to reserve context space) ===== */}
       <div
         style={{
@@ -2677,7 +2707,6 @@ export function ImageLightboxCarousel({
         <aside
           style={{
             width: 62,
-            minHeight: currentImageIsCalibrable ? 300 : 112,
             maxHeight: `calc(100vh - 40px)`, // Ensure it fits viewport
             borderRadius: 999,
             padding: currentImageIsCalibrable ? "16px 8px 0px 8px" : "8px 8px 0px 8px", // Move bottom padding to a spacer
@@ -3209,12 +3238,35 @@ export function ImageLightboxCarousel({
             >
               <ArrowRightIcon />
             </button>
+            <button
+              title="Cerrar visor"
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: "50%",
+                border: "none",
+                background: "rgba(0,0,0,0.56)",
+                color: "white",
+                cursor: "pointer",
+                lineHeight: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "background 0.15s",
+                marginTop: 8,
+              }}
+              onClick={onClose}
+              onMouseOver={(e) => (e.currentTarget.style.background = "rgba(239,68,68,0.78)")}
+              onMouseOut={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.56)")}
+            >
+              <CloseIcon />
+            </button>
           </div>
           <div style={{ flexShrink: 0, height: 16, width: "100%" }} />
         </aside>
       </div>
 
-      {/* ===== Right context panel — header/main/footer, 80% height ===== */}
+      {/* ===== Right context panel — header/main/footer, 94% height ===== */}
       <div
         style={{
           position: "absolute",
@@ -3223,7 +3275,7 @@ export function ImageLightboxCarousel({
           transform: "translate(-50%, -50%)",
           zIndex: 3,
           width: Math.max(150, contextGapWidth - 20),
-          height: "80%",
+          height: "94%",
           pointerEvents: "none",
           display: "flex",
           flexDirection: "column",
@@ -3232,7 +3284,7 @@ export function ImageLightboxCarousel({
         {/* ---- HEADER (25%) ---- */}
         <div
           style={{
-            flex: "0 0 25%",
+            flex: "0 0 auto",
             display: "flex",
             flexDirection: "column",
             justifyContent: "flex-start",
@@ -3332,9 +3384,15 @@ export function ImageLightboxCarousel({
               fontWeight: 700,
               lineHeight: 1.3,
               textShadow: "0 2px 8px rgba(0,0,0,0.5)",
+              display: "flex",
+              alignItems: "baseline",
+              gap: "8px"
             }}
           >
             {currentImage.name}
+            <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "rgba(255,255,255,0.7)" }}>
+              (Imagen {currentIndex + 1} de {images.length})
+            </span>
           </div>
           {(contextInfo.regionName ||
             contextInfo.muestraName ||
@@ -3378,14 +3436,64 @@ export function ImageLightboxCarousel({
           {activeSidebarTool === "overview" ? (
             <div
               style={{
-                fontSize: "0.84rem",
-                lineHeight: 1.5,
-                fontWeight: 500,
-                opacity: 0.7,
+                display: "flex",
+                flexDirection: "column",
+                height: "100%",
               }}
             >
-              Selecciona una de las herramientas de la barra lateral izquierda
-              para ver más información aquí.
+              <div style={{
+                fontSize: "0.84rem",
+                fontWeight: 700,
+                color: "#99d1ff",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                marginBottom: "8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px"
+              }}>
+                Asistente de Micrografía
+              </div>
+              <div style={{
+                flex: 1,
+                overflowY: "auto",
+                background: "rgba(16, 36, 63, 0.4)",
+                borderRadius: "12px",
+                padding: "12px",
+                fontSize: "0.85rem",
+                lineHeight: 1.5,
+                border: "1px solid rgba(153, 209, 255, 0.15)",
+                display: "flex",
+                flexDirection: "column"
+              }}>
+                {isAnalyzingMicrograph ? (
+                  <div style={{ display: 'flex', gap: '4px', alignItems: 'center', opacity: 0.7 }}>
+                    <div style={{ width: '5px', height: '5px', background: '#99d1ff', borderRadius: '50%', animation: 'typing 1.4s infinite ease-in-out both' }}></div>
+                    <div style={{ width: '5px', height: '5px', background: '#99d1ff', borderRadius: '50%', animation: 'typing 1.4s infinite ease-in-out both', animationDelay: '0.2s' }}></div>
+                    <div style={{ width: '5px', height: '5px', background: '#99d1ff', borderRadius: '50%', animation: 'typing 1.4s infinite ease-in-out both', animationDelay: '0.4s' }}></div>
+                    <span style={{ marginLeft: "6px", fontStyle: "italic" }}>Analizando micrografía...</span>
+                  </div>
+                ) : micrographAnalysis ? (
+                  <div style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({node, ...props}) => <p style={{ margin: '0 0 8px 0' }} {...props} />,
+                        ul: ({node, ...props}) => <ul style={{ margin: '0 0 8px 0', paddingLeft: '16px', listStyleType: 'disc' }} {...props} />,
+                        ol: ({node, ...props}) => <ol style={{ margin: '0 0 8px 0', paddingLeft: '16px', listStyleType: 'decimal' }} {...props} />,
+                        li: ({node, ...props}) => <li style={{ marginBottom: '4px' }} {...props} />,
+                        strong: ({node, ...props}) => <strong style={{ color: '#fff', fontWeight: 600 }} {...props} />,
+                      }}
+                    >
+                      {micrographAnalysis}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <span style={{ opacity: 0.6, fontStyle: "italic" }}>
+                    No hay información disponible.
+                  </span>
+                )}
+              </div>
             </div>
           ) : (
             <>
@@ -3538,7 +3646,7 @@ export function ImageLightboxCarousel({
         {/* ---- FOOTER (25%) ---- */}
         <div
           style={{
-            flex: "0 0 25%",
+            flex: "0 0 auto",
             display: "flex",
             flexDirection: "column",
             justifyContent: "flex-end",
@@ -3551,9 +3659,6 @@ export function ImageLightboxCarousel({
             lineHeight: 1.35,
           }}
         >
-          <div>
-            Imagen {currentIndex + 1} de {images.length}
-          </div>
           <div
             style={{
               marginTop: 6,
