@@ -91,53 +91,67 @@ export default function ChatPanel() {
   const [input, setInput] = useState('');
   const [pendingAttachments, setPendingAttachments] = useState<File[]>([]);
   
-  // Dummy data for chat history
-  const [chats, setChats] = useState<ChatSession[]>([
-    { id: '1', name: 'Chat actual' },
-    { id: '2', name: 'Análisis de falla' },
-    { id: '3', name: 'Consulta general' },
-    { id: '4', name: 'Ayuda de configuración' }
-  ]);
+  const [chats, setChats] = useState<ChatSession[]>([]);
   const [editingChatId, setEditingChatId] = useState<string | null>(null);
   const [editChatName, setEditChatName] = useState('');
-  const [activeChatId, setActiveChatId] = useState<string>('1');
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
   const [isWaitingForBot, setIsWaitingForBot] = useState(false);
 
-  const ws = useRef<WebSocket | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const userId = typeof window !== 'undefined' 
+    ? parseInt(localStorage.getItem('user_id') || '1', 10) 
+    : 1;
+
+  const fetchConversations = async () => {
+    try {
+      const res = await fetch(`https://albertitechnology-agent-api.hf.space/chat/conversations?user_id=${userId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const mappedChats = data.map((c: any) => ({ id: String(c.id), name: c.title }));
+        setChats(mappedChats);
+        return mappedChats;
+      }
+    } catch (e) {
+      console.error("Error fetching conversations:", e);
+    }
+    return null;
+  };
+
   useEffect(() => {
-    const socket = new WebSocket('wss://albertitechnology-agent-api.hf.space/ws/chat');
-    ws.current = socket;
-    
-    socket.onopen = () => {
-      console.log('Connected to agent-api WebSocket');
-    };
-    
-    socket.onmessage = (event) => {
-      setIsWaitingForBot(false);
+    fetchConversations().then(loadedChats => {
+      if (loadedChats && loadedChats.length > 0) {
+        setActiveChatId(loadedChats[0].id);
+      }
+    });
+  }, [userId]);
+
+  useEffect(() => {
+    if (!activeChatId) {
+      setMessages([]);
+      return;
+    }
+    const loadMessages = async () => {
+      setMessages([{ sender: 'bot', text: 'Cargando mensajes...' }]);
       try {
-        const data = JSON.parse(event.data);
-        const text = data.response || data.error || event.data;
-        setMessages(prev => [...prev, { sender: 'bot', text: String(text) }]);
+        const res = await fetch(`https://albertitechnology-agent-api.hf.space/chat/conversations/${activeChatId}/messages?user_id=${userId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setMessages(data.map((m: any) => ({
+            sender: m.role === 'user' ? 'user' : 'bot',
+            text: m.content
+          })));
+        } else {
+          setMessages([{ sender: 'bot', text: 'Error al cargar los mensajes.' }]);
+        }
       } catch (e) {
-        setMessages(prev => [...prev, { sender: 'bot', text: event.data }]);
+        setMessages([{ sender: 'bot', text: 'Error de conexión al cargar los mensajes.' }]);
       }
     };
-    
-    socket.onerror = (error) => {
-      setIsWaitingForBot(false);
-      console.error('WebSocket error:', error);
-    };
-    
-    return () => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.close();
-      }
-    };
-  }, []);
+    loadMessages();
+  }, [activeChatId, userId]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -154,7 +168,7 @@ export default function ChatPanel() {
     }
   }, [input]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim() && pendingAttachments.length === 0) return;
     
     const newAttachments = pendingAttachments.map(f => ({
@@ -163,23 +177,49 @@ export default function ChatPanel() {
       url: URL.createObjectURL(f)
     }));
 
+    const messageText = input;
     setMessages(prev => [...prev, { 
       sender: 'user', 
-      text: input,
+      text: messageText,
       attachments: newAttachments.length > 0 ? newAttachments : undefined
     }]);
-    
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.send(input);
-      setIsWaitingForBot(true);
-    } else {
-      console.warn("WebSocket is not connected");
-    }
     
     setInput('');
     setPendingAttachments([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = '24px';
+    }
+    
+    setIsWaitingForBot(true);
+    
+    try {
+      const res = await fetch("https://albertitechnology-agent-api.hf.space/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          conversation_id: activeChatId ? parseInt(activeChatId, 10) : null,
+          text: messageText,
+          model: "Qwen/Qwen2.5-72B-Instruct",
+          context_k: 8
+        })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(prev => [...prev, { sender: 'bot', text: data.response }]);
+        
+        if (!activeChatId && data.conversation_id) {
+          setActiveChatId(String(data.conversation_id));
+          fetchConversations();
+        }
+      } else {
+        setMessages(prev => [...prev, { sender: 'bot', text: "Hubo un error del servidor." }]);
+      }
+    } catch (e) {
+      setMessages(prev => [...prev, { sender: 'bot', text: "Hubo un error de conexión." }]);
+    } finally {
+      setIsWaitingForBot(false);
     }
   };
 
@@ -228,14 +268,23 @@ export default function ChatPanel() {
   const selectChat = (id: string) => {
     if (activeChatId === id) return;
     setActiveChatId(id);
-    setMessages([{ sender: 'bot', text: `Cargando chat con ID: ${id}...` }]);
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '14px', gap: '12px' }}>
       {/* Chat History Section */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <h4 style={{ margin: 0, fontSize: '0.85rem', color: '#4d6684', fontWeight: 700 }}>Historial de chats</h4>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h4 style={{ margin: 0, fontSize: '0.85rem', color: '#4d6684', fontWeight: 700 }}>Historial de chats</h4>
+          <button 
+            onClick={() => setActiveChatId(null)}
+            style={{ border: '1px solid #339eea', background: 'transparent', color: '#339eea', padding: '4px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+            title="Iniciar nueva conversación"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Nuevo Chat
+          </button>
+        </div>
         <div 
           className="custom-scrollbar"
           style={{ 
@@ -283,25 +332,6 @@ export default function ChatPanel() {
                   />
                 ) : (
                   <span style={{ fontSize: '0.85rem', color: '#10243f', fontWeight: 500 }}>{chat.name}</span>
-                )}
-                
-                {editingChatId !== chat.id && (
-                  <div style={{ display: 'flex', gap: '2px', marginLeft: '4px' }}>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); startEditChat(chat); }}
-                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#4d6684', padding: '2px', display: 'flex', alignItems: 'center' }}
-                      title="Renombrar"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                    </button>
-                    <button 
-                      onClick={(e) => deleteChat(e, chat.id)}
-                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#e53e3e', padding: '2px', display: 'flex', alignItems: 'center' }}
-                      title="Eliminar"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                    </button>
-                  </div>
                 )}
               </div>
             ))
@@ -422,74 +452,7 @@ export default function ChatPanel() {
         overflow: 'hidden',
         transition: 'all 0.2s ease',
       }}>
-        {pendingAttachments.length > 0 && (
-          <div style={{
-            display: 'flex',
-            gap: '8px',
-            padding: '8px 12px',
-            borderBottom: '1px solid rgba(16,36,63,0.08)',
-            background: '#f8fbff',
-            overflowX: 'auto'
-          }}>
-            {pendingAttachments.map((file, idx) => (
-              <div key={idx} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: 'white',
-                border: '1px solid rgba(16,36,63,0.1)',
-                padding: '4px 8px',
-                borderRadius: '8px',
-                fontSize: '0.75rem',
-                color: '#4d6684',
-                whiteSpace: 'nowrap'
-              }}>
-                <span style={{ maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</span>
-                <button 
-                  onClick={() => removeAttachment(idx)}
-                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex', color: '#e53e3e' }}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        
         <div style={{ display: 'flex', alignItems: 'flex-end', padding: '8px 12px' }}>
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              padding: '8px',
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              color: '#4d6684',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginRight: '4px',
-              transition: 'background 0.2s',
-              flexShrink: 0,
-            }}
-            title="Adjuntar archivo"
-            onMouseEnter={e => e.currentTarget.style.background = '#f0f5fa'}
-            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-            </svg>
-          </button>
-          
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            style={{ display: 'none' }} 
-            multiple
-            accept="image/jpeg,image/png,application/pdf,text/markdown,.md"
-            onChange={handleFileSelect}
-          />
           
           <textarea 
             ref={textareaRef}
