@@ -331,7 +331,21 @@ export default function ChatPanel() {
                     }}
                   />
                 ) : (
-                  <span style={{ fontSize: '0.85rem', color: '#10243f', fontWeight: 500 }}>{chat.name}</span>
+                  <span 
+                    style={{ 
+                      fontSize: '0.85rem', 
+                      color: '#10243f', 
+                      fontWeight: 500,
+                      maxWidth: '150px',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      display: 'inline-block',
+                      verticalAlign: 'middle'
+                    }} 
+                    title={chat.name}
+                  >
+                    {chat.name}
+                  </span>
                 )}
               </div>
             ))
