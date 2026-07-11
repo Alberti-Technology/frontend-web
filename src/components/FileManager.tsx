@@ -139,47 +139,6 @@ function normalizeId(value: unknown): string | null {
   return null;
 }
 
-function readMaskCacheStore(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem(MASK_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeMaskCacheStore(store: Record<string, string>): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    localStorage.setItem(MASK_STORAGE_KEY, JSON.stringify(store));
-    return true;
-  } catch (e) {
-    console.warn("[mask cache] localStorage quota exceeded, skipping cache write.", e);
-    return false;
-  }
-}
-
-function readMaskLabelsCacheStore(): Record<string, api.HfMaskLabels> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem(MASK_LABELS_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, api.HfMaskLabels>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeMaskLabelsCacheStore(store: Record<string, api.HfMaskLabels>): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    localStorage.setItem(MASK_LABELS_STORAGE_KEY, JSON.stringify(store));
-    return true;
-  } catch (e) {
-    console.warn("[mask labels cache] localStorage quota exceeded, skipping cache write.", e);
-    return false;
-  }
-}
 
 function readDrawCacheStore(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -4020,30 +3979,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
     };
   }, []);
 
-  useEffect(() => {
-    const cache = readMaskCacheStore();
-    const labelsCache = readMaskLabelsCacheStore();
-    const nextMasks: Record<string, string> = {};
-    const nextLabels: Record<string, api.HfMaskLabels> = {};
-    const nextVisibility: Record<string, boolean> = {};
 
-    Object.entries(microInfoByUrl).forEach(([url, info]) => {
-      const cachedMask = cache[info.rawId];
-      if (cachedMask) {
-        nextMasks[url] = cachedMask;
-        nextVisibility[url] = false;
-      }
-
-      const cachedLabels = labelsCache[info.rawId];
-      if (cachedLabels && Object.keys(cachedLabels).length > 0) {
-        nextLabels[url] = cachedLabels;
-      }
-    });
-
-    setMaskByImageUrl((prev) => ({ ...prev, ...nextMasks }));
-    setMaskLabelsByImageUrl((prev) => ({ ...prev, ...nextLabels }));
-    setMaskVisibleByImageUrl((prev) => ({ ...prev, ...nextVisibility }));
-  }, [microInfoByUrl]);
 
   // Expanded folder ids
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -5095,14 +5031,6 @@ export default function FileManager({ onLogout }: FileManagerProps) {
 
       const hasMaskLoaded = !!maskByImageUrl[imageUrl];
       if (hasMaskLoaded) {
-        const labelsCache = readMaskLabelsCacheStore();
-        const cachedLabels = labelsCache[microInfo.rawId];
-        if (cachedLabels && Object.keys(cachedLabels).length > 0) {
-          setMaskLabelsByImageUrl((prev) => ({
-            ...prev,
-            [imageUrl]: cachedLabels,
-          }));
-        }
         setMaskVisibleByImageUrl((prev) => ({
           ...prev,
           [imageUrl]: !prev[imageUrl],
@@ -5110,32 +5038,10 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         return;
       }
 
-      {
-        const cache = readMaskCacheStore();
-        const labelsCache = readMaskLabelsCacheStore();
-        const cachedMask = cache[microInfo.rawId];
-        if (cachedMask) {
-          const nextVisible = !maskVisibleByImageUrl[imageUrl];
-          setMaskByImageUrl((prev) => ({ ...prev, [imageUrl]: cachedMask }));
-          const cachedLabels = labelsCache[microInfo.rawId];
-          if (cachedLabels && Object.keys(cachedLabels).length > 0) {
-            setMaskLabelsByImageUrl((prev) => ({
-              ...prev,
-              [imageUrl]: cachedLabels,
-            }));
-          }
-          setMaskVisibleByImageUrl((prev) => ({
-            ...prev,
-            [imageUrl]: nextVisible,
-          }));
-          return;
-        }
-      }
-
       if (maskLoadingByImageUrl[imageUrl]) return;
 
       setMaskLoadingByImageUrl((prev) => ({ ...prev, [imageUrl]: true }));
-      pushToast("Generando máscara de material...", "info", 5000);
+      // The toast is deferred until we know if it's from backend or not
 
       try {
         let finalMaskUrl = "";
@@ -5151,25 +5057,44 @@ export default function FileManager({ onLogout }: FileManagerProps) {
         // a fixed 512x512 mask, so we letterbox the image to match.
         const modelInputSize = materialCode !== "45951" ? 512 : undefined;
 
+        let fromBackend = false;
         try {
-          const hfResult = await api.generateMaskWithHf(
-            imageUrl,
-            endpoint,
-            modelInputSize,
-          );
-          finalMaskUrl = hfResult.url;
-          finalMaskLabels = hfResult.labels;
-        } catch {
-          await api.requestMaskGeneration(microInfo.rawId);
-          const startedAt = Date.now();
-          const timeoutMs = 70000;
+          const maskPath = await api.getMask(microInfo.rawId);
+          if (maskPath) {
+            finalMaskUrl = fixImageUrl(maskPath);
+            fromBackend = true;
+          }
+        } catch (e) {
+          console.warn("Mask not found in backend, generating locally...", e);
+        }
 
-          while (Date.now() - startedAt < timeoutMs) {
-            await new Promise((resolve) => setTimeout(resolve, 2500));
-            const maskPath = await api.getMask(microInfo.rawId);
-            if (maskPath) {
-              finalMaskUrl = fixImageUrl(maskPath);
-              break;
+        if (!fromBackend) {
+          pushToast("Generando máscara de la micrografía...", "info", 5000);
+          try {
+            const hfResult = await api.generateMaskWithHf(
+              imageUrl,
+              endpoint,
+              modelInputSize,
+            );
+            finalMaskUrl = hfResult.url;
+            finalMaskLabels = hfResult.labels;
+            
+            // Guardar la máscara en el backend de forma asíncrona
+            api.saveMask(microInfo.rawId, finalMaskUrl).catch((e) => 
+              console.error("Error al guardar la máscara en el backend:", e)
+            );
+          } catch {
+            await api.requestMaskGeneration(microInfo.rawId);
+            const startedAt = Date.now();
+            const timeoutMs = 70000;
+
+            while (Date.now() - startedAt < timeoutMs) {
+              await new Promise((resolve) => setTimeout(resolve, 2500));
+              const maskPath = await api.getMask(microInfo.rawId);
+              if (maskPath) {
+                finalMaskUrl = fixImageUrl(maskPath);
+                break;
+              }
             }
           }
         }
@@ -5192,32 +5117,18 @@ export default function FileManager({ onLogout }: FileManagerProps) {
 
         // Re-read the cache right before writing to avoid overwriting
         // masks generated concurrently for other micrographs.
-        const freshCache = readMaskCacheStore();
-        freshCache[microInfo.rawId] = finalMaskUrl;
-        const cacheOk = writeMaskCacheStore(freshCache);
         if (finalMaskLabels && Object.keys(finalMaskLabels).length > 0) {
           setMaskLabelsByImageUrl((prev) => ({
             ...prev,
             [imageUrl]: finalMaskLabels as api.HfMaskLabels,
           }));
-          const freshLabelsCache = readMaskLabelsCacheStore();
-          freshLabelsCache[microInfo.rawId] = finalMaskLabels;
-          writeMaskLabelsCacheStore(freshLabelsCache);
         }
 
-        if (cacheOk) {
-          pushToast(
-            "Máscara lista. Ya podés visualizarla sobre la imagen.",
-            "info",
-            5600,
-          );
-        } else {
-          pushToast(
-            "Máscara generada, pero no se pudo guardar en caché (almacenamiento lleno). Funcionará durante esta sesión.",
-            "warning",
-            8000,
-          );
-        }
+        pushToast(
+          "Máscara aplicada satisfactoriamente.",
+          "info",
+          5600,
+        );
       } catch (err) {
         const maybeApiError = err as ApiLikeError;
         const msg =
@@ -6254,9 +6165,8 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               }));
               const microInfo = microInfoByUrl[imageUrl];
               if (microInfo?.rawId) {
-                const cache = readMaskCacheStore();
-                cache[microInfo.rawId] = newDataUrl;
-                writeMaskCacheStore(cache);
+                // Mask edit logic should ideally update the backend here if desired,
+                // but for now we only update local state.
               }
             }}
             onClose={() => {

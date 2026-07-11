@@ -556,6 +556,22 @@ export async function getMask(micrografiaId: string | number) {
   return data?.mask_url || null;
 }
 
+export async function saveMask(micrografiaId: string | number, maskDataUrl: string) {
+  const res = await apiFetchWithAuth(`metalografia/mask/${micrografiaId}/`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({ mask_data: maskDataUrl }),
+  });
+
+  if (!res.ok) {
+    const payload = await readErrorPayload(res);
+    throw buildApiError(res, payload, "Error guardando máscara");
+  }
+
+  const data = await res.json();
+  return data?.mask_url || null;
+}
+
 function normalizeRgbTuple(value: unknown): [number, number, number] | null {
   if (!Array.isArray(value) || value.length < 3) return null;
   const rgb = value.slice(0, 3).map((channel) => Number(channel));
