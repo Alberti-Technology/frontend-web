@@ -526,21 +526,7 @@ export async function deleteMicrografia(id: string | number) {
   if (!res.ok) throw new Error("Error eliminando micrografía");
 }
 
-export async function requestMaskGeneration(micrografiaId: string | number) {
-  const res = await apiFetchWithAuth(`metalografia/predict/${micrografiaId}/`, {
-    method: "POST",
-    headers: getHeaders(),
-  });
-
-  if (!res.ok) {
-    const payload = await readErrorPayload(res);
-    throw buildApiError(res, payload, "Error solicitando máscara");
-  }
-
-  return res.json();
-}
-
-export async function getMask(micrografiaId: string | number) {
+export async function getMask(micrografiaId: string | number): Promise<{ mask_type: string; mask_url: string } | null> {
   const res = await apiFetchWithAuth(`metalografia/mask/${micrografiaId}/`, {
     headers: getHeaders(),
   });
@@ -553,14 +539,21 @@ export async function getMask(micrografiaId: string | number) {
   }
 
   const data = await res.json();
-  return data?.mask_url || null;
+  return data?.mask_url ? data : null;
 }
 
 export async function saveMask(micrografiaId: string | number, maskDataUrl: string) {
-  const res = await apiFetchWithAuth(`metalografia/mask/${micrografiaId}/`, {
+  // Convertir data URL a Blob para enviar como multipart/form-data
+  const blobResponse = await fetch(maskDataUrl);
+  const blob = await blobResponse.blob();
+
+  const formData = new FormData();
+  formData.append("image", blob, "mask.png");
+
+  const res = await apiFetchWithAuth(`metalografia/predict/${micrografiaId}/`, {
     method: "POST",
-    headers: getHeaders(),
-    body: JSON.stringify({ mask_data: maskDataUrl }),
+    headers: getHeaders(true),
+    body: formData,
   });
 
   if (!res.ok) {
@@ -569,7 +562,7 @@ export async function saveMask(micrografiaId: string | number, maskDataUrl: stri
   }
 
   const data = await res.json();
-  return data?.mask_url || null;
+  return data?.image_url || null;
 }
 
 function normalizeRgbTuple(value: unknown): [number, number, number] | null {
@@ -659,7 +652,7 @@ async function letterboxImageBlob(
  * Crop a mask data URL to only the content region (remove letterbox padding)
  * and return a new data URL that maps exactly to the original image proportions.
  */
-async function cropMaskToContentRegion(
+export async function cropMaskToContentRegion(
   maskDataUrl: string,
   contentRect: { x: number; y: number; w: number; h: number },
   maskSquareSize: number,

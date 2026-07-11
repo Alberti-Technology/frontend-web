@@ -5059,13 +5059,52 @@ export default function FileManager({ onLogout }: FileManagerProps) {
 
         let fromBackend = false;
         try {
-          const maskPath = await api.getMask(microInfo.rawId);
-          if (maskPath) {
-            finalMaskUrl = fixImageUrl(maskPath);
+          const maskData = await api.getMask(microInfo.rawId);
+          if (maskData) {
+            finalMaskUrl = fixImageUrl(maskData.mask_url);
             fromBackend = true;
           }
         } catch (e) {
           console.warn("Mask not found in backend, generating locally...", e);
+        }
+
+        if (fromBackend && modelInputSize && finalMaskUrl) {
+          try {
+            // Get original image dimensions
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            await new Promise((resolve) => {
+              img.onload = resolve;
+              img.onerror = resolve;
+              img.src = imageUrl;
+            });
+            const srcW = img.naturalWidth || img.width;
+            const srcH = img.naturalHeight || img.height;
+
+            if (srcW && srcH) {
+              // Calculate letterbox padding
+              const scale = Math.min(modelInputSize / srcW, modelInputSize / srcH);
+              const drawW = Math.round(srcW * scale);
+              const drawH = Math.round(srcH * scale);
+              const offsetX = Math.round((modelInputSize - drawW) / 2);
+              const offsetY = Math.round((modelInputSize - drawH) / 2);
+              const contentRect = { x: offsetX, y: offsetY, w: drawW, h: drawH };
+
+              // Fetch mask and convert to data URL
+              const maskResponse = await fetch(finalMaskUrl);
+              const maskBlob = await maskResponse.blob();
+              const maskDataUrl = await new Promise<string>((resolve) => {
+                 const reader = new FileReader();
+                 reader.onloadend = () => resolve(reader.result as string);
+                 reader.readAsDataURL(maskBlob);
+              });
+
+              // Crop the padding
+              finalMaskUrl = await api.cropMaskToContentRegion(maskDataUrl, contentRect, modelInputSize);
+            }
+          } catch (e) {
+            console.error("Failed to crop backend mask padding:", e);
+          }
         }
 
         if (!fromBackend) {
@@ -5084,18 +5123,7 @@ export default function FileManager({ onLogout }: FileManagerProps) {
               console.error("Error al guardar la máscara en el backend:", e)
             );
           } catch {
-            await api.requestMaskGeneration(microInfo.rawId);
-            const startedAt = Date.now();
-            const timeoutMs = 70000;
-
-            while (Date.now() - startedAt < timeoutMs) {
-              await new Promise((resolve) => setTimeout(resolve, 2500));
-              const maskPath = await api.getMask(microInfo.rawId);
-              if (maskPath) {
-                finalMaskUrl = fixImageUrl(maskPath);
-                break;
-              }
-            }
+            throw new Error("No se pudo generar la máscara. El servidor de IA no está disponible.");
           }
         }
 
