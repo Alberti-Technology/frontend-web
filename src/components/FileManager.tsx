@@ -12,6 +12,8 @@ import { MaskLegend } from "./MaskLegend";
 import {
   MICROGRAPHY_MEASURE_COMPLETED_EVENT,
   type MicrographyMeasureCompletedEvent,
+  REPORT_GENERATION_STATUS_EVENT,
+  type ReportGenerationStatusEvent,
   connectNotificationsWebSocket,
   disconnectNotificationsWebSocket,
 } from "../services/notifications";
@@ -5066,6 +5068,32 @@ export default function FileManager({
     refreshReportHistory();
   }, [refreshReportHistory]);
 
+  useEffect(() => {
+    const handleReportStatus = (e: Event) => {
+      const customEvent = e as CustomEvent<ReportGenerationStatusEvent>;
+      const payload = customEvent.detail;
+      if (payload.status === "completed") {
+        const rName = payload.report_name || `Informe ${payload.report_id}`;
+        window.dispatchEvent(
+          new CustomEvent("show_toast", {
+            detail: { message: `Informe ${rName} generado y enviado por correo exitosamente`, type: "success" },
+          }),
+        );
+      } else if (payload.status === "error") {
+        window.dispatchEvent(
+          new CustomEvent("show_toast", {
+            detail: { message: `Error generando informe: ${payload.error_message || "Desconocido"}`, type: "error" },
+          }),
+        );
+      }
+      void refreshReportHistory();
+    };
+
+    window.addEventListener(REPORT_GENERATION_STATUS_EVENT, handleReportStatus);
+    return () =>
+      window.removeEventListener(REPORT_GENERATION_STATUS_EVENT, handleReportStatus);
+  }, [refreshReportHistory]);
+
   const isMuestraLockedForPdfSelection = useCallback(
     (muestraId: string) =>
       queuedPdfMuestraIds.has(String(muestraId)) &&
@@ -6125,7 +6153,7 @@ export default function FileManager({
             <div
               style={{ fontSize: "0.84rem", fontWeight: 700, color: "#4d6684" }}
             >
-              Informes guardados
+              Informes generados
             </div>
 
             <div
@@ -6198,11 +6226,41 @@ export default function FileManager({
                                 whiteSpace: "nowrap",
                                 flex: 1,
                                 minWidth: 0,
-                                textAlign: "center",
+                                textAlign: "left",
                               }}
                             >
                               {pdf.value || `Informe_ID_${pdf.id}`}.pdf
                             </span>
+                            
+                            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                              {pdf.status === "processing" && (
+                                <span style={{ fontSize: "0.75rem", color: "#eab308", fontWeight: 600 }}>Procesando...</span>
+                              )}
+                              {pdf.status === "error" && (
+                                <span style={{ fontSize: "0.75rem", color: "#ef4444", fontWeight: 600 }}>Error</span>
+                              )}
+                              {pdf.status === "pending" && (
+                                <span style={{ fontSize: "0.75rem", color: "#6b7280", fontWeight: 600 }}>En cola</span>
+                              )}
+                                {(pdf.status === "completed" || !pdf.status) && pdf.file && (
+                                  <a
+                                    href={pdf.file.startsWith("/") ? `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"}${pdf.file}` : pdf.file}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    fontSize: "0.75rem",
+                                    color: "#3b82f6",
+                                    fontWeight: 600,
+                                    textDecoration: "none",
+                                    padding: "2px 6px",
+                                    background: "#eff6ff",
+                                    borderRadius: "4px"
+                                  }}
+                                >
+                                  Ver informe
+                                </a>
+                              )}
+                            </div>
                           </li>
                         ))}
                       </ul>
