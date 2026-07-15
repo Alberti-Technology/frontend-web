@@ -1,10 +1,12 @@
 import { API_BASE_URL, API_WAKEUP_RETRY_MS } from "../config/apiConfig";
 
 export const BASE_URL = API_BASE_URL;
-const HF_MASK_ENDPOINT = (
-  import.meta.env.VITE_HF_MASK_ENDPOINT ||
-  "https://AlbertiTechnology-materialai.hf.space/segment/45951/rgb/"
-).trim();
+let envEndpoint = (import.meta.env.VITE_HF_MASK_ENDPOINT || "").trim();
+if (envEndpoint && envEndpoint.includes("45951") && !envEndpoint.endsWith("/rgb/")) {
+  envEndpoint = envEndpoint.replace(/\/$/, "") + "/rgb/";
+}
+
+const HF_MASK_ENDPOINT = envEndpoint || "https://AlbertiTechnology-materialai.hf.space/segment/45951/rgb/";
 
 type ApiRequestError = Error & {
   status?: number;
