@@ -212,7 +212,6 @@ function buildApiError(
 
 function shouldTreatAsSleepingServer(response: Response) {
   const maybeSleepingStatus =
-    response.status === 404 ||
     response.status === 502 ||
     response.status === 503 ||
     response.status === 504 ||
