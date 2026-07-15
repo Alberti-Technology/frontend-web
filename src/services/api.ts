@@ -52,6 +52,24 @@ export interface HfMaskResult {
 
 const overlayId = "api-wakeup-overlay";
 
+export const ACERO_LABELS: HfMaskLabels = {
+  "0": { name: "Cementita", color: [255, 0, 0] },
+  "1": { name: "Borde de grano", color: [0, 255, 0] },
+  "2": { name: "Ferrita", color: [0, 0, 255] },
+  "3": { name: "Raya", color: [255, 255, 255] }
+};
+
+export function pingSpaces() {
+  const spaces = [
+    "https://albertitechnology-agent-api.hf.space",
+    "https://AlbertiTechnology-materialai.hf.space",
+    "https://albertitechnology-report-api.hf.space"
+  ];
+  spaces.forEach((space) => {
+    fetch(space + "/", { method: "GET" }).catch(() => {});
+  });
+}
+
 let isRecovering = false;
 let recoveryAttempts = 0;
 const recoveryQueue: DeferredRequest[] = [];
@@ -316,6 +334,7 @@ export async function login(user: string, pass: string): Promise<string> {
         localStorage.setItem("user_id", data.user_id?.toString() || "");
         localStorage.setItem("username", data.username || user);
         localStorage.setItem("company_enabled", data.company_enabled ? "true" : "false");
+        pingSpaces();
         return token;
       }
     }
@@ -526,7 +545,7 @@ export async function deleteMicrografia(id: string | number) {
   if (!res.ok) throw new Error("Error eliminando micrografía");
 }
 
-export async function getMask(micrografiaId: string | number): Promise<{ mask_type: string; mask_url: string } | null> {
+export async function getMask(micrografiaId: string | number): Promise<{ mask_type: string; mask_url: string; labels?: HfMaskLabels } | null> {
   const res = await apiFetchWithAuth(`metalografia/mask/${micrografiaId}/`, {
     headers: getHeaders(),
   });
@@ -542,13 +561,16 @@ export async function getMask(micrografiaId: string | number): Promise<{ mask_ty
   return data?.mask_url ? data : null;
 }
 
-export async function saveMask(micrografiaId: string | number, maskDataUrl: string) {
+export async function saveMask(micrografiaId: string | number, maskDataUrl: string, labels?: HfMaskLabels) {
   // Convertir data URL a Blob para enviar como multipart/form-data
   const blobResponse = await fetch(maskDataUrl);
   const blob = await blobResponse.blob();
 
   const formData = new FormData();
   formData.append("image", blob, "mask.png");
+  if (labels) {
+    formData.append("labels", JSON.stringify(labels));
+  }
 
   const res = await apiFetchWithAuth(`metalografia/predict/${micrografiaId}/`, {
     method: "POST",

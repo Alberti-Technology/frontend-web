@@ -1543,7 +1543,7 @@ function ImageLightboxCarousel({
       : activeSidebarTool === "measurement"
         ? "Arrastra una linea sobre la micrografia para medir distancias en micrometros. La medida es temporal y no se guarda."
         : activeSidebarTool === "mask"
-          ? "Genera y superpone la mascara de segmentacion. La opacidad es fija al 25% para mantener consistencia visual."
+          ? "Genera y superpone la mascara de segmentacion. La opacidad es fija al 65% para mantener consistencia visual."
           : "Usa las herramientas del lateral izquierdo para calibrar o segmentar la micrografia actual.";
   const calibrationStateLabel = calibrationMode
     ? lineStart
@@ -3241,7 +3241,7 @@ function ImageLightboxCarousel({
                         ? "Estado: generando máscara"
                         : currentMaskUrl
                           ? isMaskVisible
-                            ? "Estado: máscara visible (25%)"
+                            ? "Estado: máscara visible (65%)"
                             : "Estado: máscara oculta"
                           : "Estado: sin máscara generada"}
                     </span>
@@ -4990,7 +4990,7 @@ export default function FileManager({
         canvas.height = targetH;
         const ctx = canvas.getContext("2d");
         if (ctx) {
-          ctx.globalAlpha = 0.25;
+          ctx.globalAlpha = 0.65;
           // Draw the mask scaled to the original image dimensions
           ctx.drawImage(maskImg, 0, 0, targetW, targetH);
           resolve(canvas.toDataURL("image/png"));
@@ -5066,10 +5066,17 @@ export default function FileManager({
           const maskData = await api.getMask(microInfo.rawId);
           if (maskData) {
             finalMaskUrl = fixImageUrl(maskData.mask_url);
+            if (maskData.labels) {
+              finalMaskLabels = maskData.labels;
+            }
             fromBackend = true;
           }
         } catch (e) {
           console.warn("Mask not found in backend, generating locally...", e);
+        }
+
+        if (!finalMaskLabels && materialCode === "45951") {
+          finalMaskLabels = api.ACERO_LABELS;
         }
 
         if (fromBackend && modelInputSize && finalMaskUrl) {
@@ -5122,10 +5129,12 @@ export default function FileManager({
             finalMaskUrl = hfResult.url;
             finalMaskLabels = hfResult.labels;
             
-            // Guardar la máscara en el backend de forma asíncrona
-            api.saveMask(microInfo.rawId, finalMaskUrl).catch((e) => 
-              console.error("Error al guardar la máscara en el backend:", e)
-            );
+            // Guardar la máscara en el backend si no provino de ahí
+            if (microInfo?.rawId && finalMaskUrl) {
+              api.saveMask(microInfo.rawId, finalMaskUrl, finalMaskLabels).catch((e) => {
+                console.warn("Error guardando la máscara en el backend", e);
+              });
+            }
           } catch {
             throw new Error("No se pudo generar la máscara. El servidor de IA no está disponible.");
           }
