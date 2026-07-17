@@ -91,7 +91,7 @@ async function processAutoCalibrateQueue() {
     const item = autoCalibrateQueue.shift();
     if (!item) continue;
     try {
-      const res = await fetch("https://AlbertiTechnology-materialai.hf.space/escala/", {
+      const res = await fetch(`${api.HF_BASE_URL}/escala/`, {
         method: "POST",
         body: item.fd,
       });
@@ -5072,7 +5072,7 @@ export default function FileManager({
         // Acero (45951) usa /rgb/, magnesia (45956) y otros usan /
         const suffix = materialCode === "45951" ? "/rgb/" : "/";
         const endpoint = materialCode
-          ? `https://AlbertiTechnology-materialai.hf.space/segment/${materialCode}${suffix}`
+          ? `${api.HF_BASE_URL}/segment/${materialCode}${suffix}`
           : undefined;
         // Acero (/rgb/) handles resizing server-side; other models output
         // a fixed 512x512 mask, so we letterbox the image to match.
@@ -5096,44 +5096,7 @@ export default function FileManager({
           finalMaskLabels = api.ACERO_LABELS;
         }
 
-        if (fromBackend && modelInputSize && finalMaskUrl) {
-          try {
-            // Get original image dimensions
-            const img = new Image();
-            img.crossOrigin = "anonymous";
-            await new Promise((resolve) => {
-              img.onload = resolve;
-              img.onerror = resolve;
-              img.src = imageUrl;
-            });
-            const srcW = img.naturalWidth || img.width;
-            const srcH = img.naturalHeight || img.height;
 
-            if (srcW && srcH) {
-              // Calculate letterbox padding
-              const scale = Math.min(modelInputSize / srcW, modelInputSize / srcH);
-              const drawW = Math.round(srcW * scale);
-              const drawH = Math.round(srcH * scale);
-              const offsetX = Math.round((modelInputSize - drawW) / 2);
-              const offsetY = Math.round((modelInputSize - drawH) / 2);
-              const contentRect = { x: offsetX, y: offsetY, w: drawW, h: drawH };
-
-              // Fetch mask and convert to data URL
-              const maskResponse = await fetch(finalMaskUrl);
-              const maskBlob = await maskResponse.blob();
-              const maskDataUrl = await new Promise<string>((resolve) => {
-                 const reader = new FileReader();
-                 reader.onloadend = () => resolve(reader.result as string);
-                 reader.readAsDataURL(maskBlob);
-              });
-
-              // Crop the padding
-              finalMaskUrl = await api.cropMaskToContentRegion(maskDataUrl, contentRect, modelInputSize);
-            }
-          } catch (e) {
-            console.error("Failed to crop backend mask padding:", e);
-          }
-        }
 
         if (!fromBackend) {
           pushToast("Generando máscara de la micrografía...", "info", 5000);

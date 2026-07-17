@@ -1,12 +1,11 @@
 import { API_BASE_URL, API_WAKEUP_RETRY_MS } from "../config/apiConfig";
 
 export const BASE_URL = API_BASE_URL;
-let envEndpoint = (import.meta.env.VITE_HF_MASK_ENDPOINT || "").trim();
-if (envEndpoint && envEndpoint.includes("45951") && !envEndpoint.endsWith("/rgb/")) {
-  envEndpoint = envEndpoint.replace(/\/$/, "") + "/rgb/";
-}
-
-const HF_MASK_ENDPOINT = envEndpoint || "https://AlbertiTechnology-materialai.hf.space/segment/45951/rgb/";
+const configuredEndpoint = import.meta.env.VITE_HF_MASK_ENDPOINT || "";
+export const HF_BASE_URL = (configuredEndpoint || "https://AlbertiTechnology-materialai.hf.space").replace(/\/segment\/.*$/, "").replace(/\/$/, "");
+const HF_MASK_ENDPOINT = configuredEndpoint 
+  ? (configuredEndpoint.includes("/segment/") ? configuredEndpoint : `${HF_BASE_URL}/segment/45951/rgb/`) 
+  : "https://AlbertiTechnology-materialai.hf.space/segment/45951/rgb/";
 
 type ApiRequestError = Error & {
   status?: number;
@@ -64,7 +63,7 @@ export const ACERO_LABELS: HfMaskLabels = {
 export function pingSpaces() {
   const spaces = [
     "https://albertitechnology-agent-api.hf.space",
-    "https://AlbertiTechnology-materialai.hf.space",
+    HF_BASE_URL,
     "https://albertitechnology-report-api.hf.space"
   ];
   spaces.forEach((space) => {
