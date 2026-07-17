@@ -5008,8 +5008,25 @@ export default function FileManager({
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.globalAlpha = 0.65;
-          // Draw the mask scaled to the original image dimensions
-          ctx.drawImage(maskImg, 0, 0, targetW, targetH);
+          
+          const mWidth = maskImg.naturalWidth || maskImg.width;
+          const mHeight = maskImg.naturalHeight || maskImg.height;
+
+          // Si la máscara es cuadrada (ej. 512x512 o 1024x1024) y la imagen original no lo es, 
+          // significa que la máscara fue rellenada (letterbox) y debemos recortar el exceso.
+          if (mWidth === mHeight && targetW !== targetH && mWidth > 0) {
+             const scale = Math.min(mWidth / targetW, mHeight / targetH);
+             const newW = Math.round(targetW * scale);
+             const newH = Math.round(targetH * scale);
+             const xOffset = Math.floor((mWidth - newW) / 2);
+             const yOffset = Math.floor((mHeight - newH) / 2);
+             
+             ctx.drawImage(maskImg, xOffset, yOffset, newW, newH, 0, 0, targetW, targetH);
+          } else {
+             // Ya está en la proporción correcta o la original también es cuadrada
+             ctx.drawImage(maskImg, 0, 0, targetW, targetH);
+          }
+          
           resolve(canvas.toDataURL("image/png"));
         } else {
           resolve(maskSrc);
