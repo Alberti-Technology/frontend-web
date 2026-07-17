@@ -42,10 +42,13 @@ function writeVerticesCacheStore(store: Record<string, { vertices: number[][]; s
   }
 }
 
+const ENABLE_AUTOCALIBRATION = false;
+
 const autoCalibrateQueue: Array<{ fd: FormData; imageUrl: string; sourceWidth: number; sourceHeight: number }> = [];
 let isProcessingCalibrationQueue = false;
 
 const addMicrografiaToAutoCalibrationQueue = (file: Blob, normalizedImageUrl: string) => {
+  if (!ENABLE_AUTOCALIBRATION) return;
   if (!file || !normalizedImageUrl) return;
   if (typeof window !== "undefined" && localStorage.getItem("company_enabled") !== "true") return;
   const autoCalFd = new FormData();
@@ -961,7 +964,7 @@ function ResponsiveGallery({
                 }}
                 onClick={() => onImageClick(img)}
               >
-                {isCalibrable && companyEnabled !== false && (hasModel || isCalibrated) && (
+                {isCalibrable && companyEnabled !== false && (!ENABLE_AUTOCALIBRATION ? isCalibrated : (hasModel || isCalibrated)) && (
                   <div
                     style={{
                       position: "absolute",
@@ -2569,45 +2572,47 @@ function ImageLightboxCarousel({
               >
                 <CaliperIcon />
               </button>
-              <button
-                title="Reintentar autocalibración"
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: "50%",
-                  border: "none",
-                  background: !!calibratingByUrl?.[currentImage.url]
-                      ? "rgba(51,158,234,0.88)"
-                      : "rgba(0,0,0,0.56)",
-                  color: "white",
-                  cursor: !!calibratingByUrl?.[currentImage.url] ? "wait" : "pointer",
-                  lineHeight: 0,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transition: "background 0.15s, transform 0.15s",
-                  opacity: !!calibratingByUrl?.[currentImage.url] ? 0.65 : 1,
-                }}
-                disabled={!!calibratingByUrl?.[currentImage.url] || !onRetryAutoCalibration}
-                onClick={() => onCheckMicrographLimit(() => {
-                  if (!currentImage?.url || !!calibratingByUrl?.[currentImage.url] || !onRetryAutoCalibration) return;
-                  if (!(microMaterialHasModelByUrl[currentImage.url] ?? true)) {
-                    pushToast("Material no soportado.", "error", 5000);
-                    return;
-                  }
-                  onRetryAutoCalibration(currentImage.url);
-                })}
-                onMouseOver={(e) => {
-                  if (!!calibratingByUrl?.[currentImage.url]) return;
-                  e.currentTarget.style.background = "rgba(51,158,234,0.78)";
-                }}
-                onMouseOut={(e) => {
-                  if (!!calibratingByUrl?.[currentImage.url]) return;
-                  e.currentTarget.style.background = "rgba(0,0,0,0.56)";
-                }}
-              >
-                <RefreshIcon />
-              </button>
+              {ENABLE_AUTOCALIBRATION && (
+                <button
+                  title="Reintentar autocalibración"
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: "50%",
+                    border: "none",
+                    background: !!calibratingByUrl?.[currentImage.url]
+                        ? "rgba(51,158,234,0.88)"
+                        : "rgba(0,0,0,0.56)",
+                    color: "white",
+                    cursor: !!calibratingByUrl?.[currentImage.url] ? "wait" : "pointer",
+                    lineHeight: 0,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "background 0.15s, transform 0.15s",
+                    opacity: !!calibratingByUrl?.[currentImage.url] ? 0.65 : 1,
+                  }}
+                  disabled={!!calibratingByUrl?.[currentImage.url] || !onRetryAutoCalibration}
+                  onClick={() => onCheckMicrographLimit(() => {
+                    if (!currentImage?.url || !!calibratingByUrl?.[currentImage.url] || !onRetryAutoCalibration) return;
+                    if (!(microMaterialHasModelByUrl[currentImage.url] ?? true)) {
+                      pushToast("Material no soportado.", "error", 5000);
+                      return;
+                    }
+                    onRetryAutoCalibration(currentImage.url);
+                  })}
+                  onMouseOver={(e) => {
+                    if (!!calibratingByUrl?.[currentImage.url]) return;
+                    e.currentTarget.style.background = "rgba(51,158,234,0.78)";
+                  }}
+                  onMouseOut={(e) => {
+                    if (!!calibratingByUrl?.[currentImage.url]) return;
+                    e.currentTarget.style.background = "rgba(0,0,0,0.56)";
+                  }}
+                >
+                  <RefreshIcon />
+                </button>
+              )}
               <button
                 title={
                   !measurementEnabled
@@ -2981,7 +2986,7 @@ function ImageLightboxCarousel({
             textAlign: "left",
           }}
         >
-          {aiSuccess && !calibrationMode && (
+          {aiSuccess && !calibrationMode && ENABLE_AUTOCALIBRATION && (
             <div
               style={{
                 marginBottom: 16,
@@ -3004,7 +3009,7 @@ function ImageLightboxCarousel({
               </div>
             </div>
           )}
-          {aiProcessing && !calibrationMode && (
+          {aiProcessing && !calibrationMode && ENABLE_AUTOCALIBRATION && (
             <div
               className="ai-shimmer-bg"
               style={{
@@ -3031,7 +3036,7 @@ function ImageLightboxCarousel({
               </div>
             </div>
           )}
-          {aiError && !hasCalibration && !calibrationMode && (
+          {aiError && !hasCalibration && !calibrationMode && ENABLE_AUTOCALIBRATION && (
             <div
               style={{
                 marginBottom: 16,
@@ -3843,6 +3848,7 @@ export default function FileManager({
     return () => disconnectNotificationsWebSocket();
   }, [companyEnabled, token]);
 
+  const hasInitializedLastMicrometers = useRef(false);
 
   useEffect(() => {
     const nextCalibrationData: Record<string, CalibrationInfo> = {};
@@ -3879,10 +3885,21 @@ export default function FileManager({
       }
     });
 
-    setCalibrationData(nextCalibrationData);
+    setCalibrationData((prev) => {
+      const merged = { ...nextCalibrationData };
+      for (const key in merged) {
+        if (prev[key]) {
+          if (prev[key].width) merged[key].width = prev[key].width;
+          if (prev[key].height) merged[key].height = prev[key].height;
+        }
+      }
+      return merged;
+    });
     setFailedCalibrationByUrl(prev => ({ ...prev, ...nextFailed }));
-    if (rememberedMicrometers > 0) {
+    
+    if (rememberedMicrometers > 0 && !hasInitializedLastMicrometers.current) {
       setLastMicrometers(rememberedMicrometers);
+      hasInitializedLastMicrometers.current = true;
     }
   }, [apiMicrografias, fixImageUrl]);
 
@@ -5270,7 +5287,9 @@ export default function FileManager({
           >
             {name}
           </span>
-          {type === "micrografia" && companyEnabled !== false && (hasModel || isCalibrated) && (
+        </div>
+        <div className="flex-shrink-0 ml-2 flex items-center gap-1.5">
+          {type === "micrografia" && companyEnabled !== false && (!ENABLE_AUTOCALIBRATION ? isCalibrated : (hasModel || isCalibrated)) && (
             <span
               title={
                 isCalibrated
@@ -5282,25 +5301,24 @@ export default function FileManager({
                       : "Sin calibrar"
               }
               style={{
-                marginLeft: 4,
                 display: "inline-flex",
                 alignItems: "center",
                 flexShrink: 0,
               }}
             >
               {isCalibrated ? (
-                isAi ? (
+                (isAi && ENABLE_AUTOCALIBRATION) ? (
                   <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "0 4px", height: "18px", boxSizing: "border-box", lineHeight: 1, borderRadius: 4, background: "rgba(22,163,74,0.15)", border: "1px solid #16a34a", color: "#16a34a", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>IA</span>
                 ) : (
                   <span style={{ color: "#16a34a", display: "inline-flex", alignItems: "center", height: "18px", boxSizing: "border-box" }}><CheckIcon /></span>
                 )
-              ) : isCalibrating ? (
+              ) : ENABLE_AUTOCALIBRATION && (isCalibrating ? (
                 <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "0 4px", height: "18px", boxSizing: "border-box", lineHeight: 1, borderRadius: 4, background: "rgba(232,163,23,0.15)", border: "1px solid #e8a317", color: "#e8a317", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>IA</span>
               ) : isFailed ? (
                 <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "0 4px", height: "18px", boxSizing: "border-box", lineHeight: 1, borderRadius: 4, background: "rgba(248,113,113,0.15)", border: "1px solid #f87171", color: "#f87171", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>IA</span>
               ) : (
                 <span style={{ fontSize: "0.6rem", fontWeight: 800, padding: "0 4px", height: "18px", boxSizing: "border-box", lineHeight: 1, borderRadius: 4, background: "rgba(232,163,23,0.15)", border: "1px solid #e8a317", color: "#e8a317", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>IA</span>
-              )}
+              ))}
             </span>
           )}
           {type === "micrografia" && companyEnabled !== false && hasModel && (
@@ -5315,7 +5333,6 @@ export default function FileManager({
                       : "Procesando gráfico..."
               }
               style={{
-                marginLeft: 4,
                 display: "inline-flex",
                 alignItems: "center",
                 flexShrink: 0,
@@ -5330,8 +5347,6 @@ export default function FileManager({
               )}
             </span>
           )}
-        </div>
-        <div className="flex-shrink-0 ml-2 flex items-center gap-1.5">
           {type !== "micrografia" && (
             <button
               title={addLabel}
@@ -6482,18 +6497,22 @@ export default function FileManager({
             </div>
             <div className="p-6 max-h-[60vh] overflow-y-auto">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(22,163,74,0.15)', border: '1px solid #16a34a', color: '#16a34a', lineHeight: 1 }}>IA</span>
-                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibración exitosa</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(232,163,23,0.15)', border: '1px solid #e8a317', color: '#e8a317', lineHeight: 1 }}>IA</span>
-                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibrando (o en cola)</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(248,113,113,0.15)', border: '1px solid #f87171', color: '#f87171', lineHeight: 1 }}>IA</span>
-                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Error en autocalibración</span>
-                </div>
+                {ENABLE_AUTOCALIBRATION && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(22,163,74,0.15)', border: '1px solid #16a34a', color: '#16a34a', lineHeight: 1 }}>IA</span>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibración exitosa</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(232,163,23,0.15)', border: '1px solid #e8a317', color: '#e8a317', lineHeight: 1 }}>IA</span>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibrando (o en cola)</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '3px 5px', borderRadius: 4, background: 'rgba(248,113,113,0.15)', border: '1px solid #f87171', color: '#f87171', lineHeight: 1 }}>IA</span>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Error en autocalibración</span>
+                    </div>
+                  </>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={{ color: '#16a34a', padding: '2px 4px', display: 'flex' }}>
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -6536,24 +6555,28 @@ export default function FileManager({
             </div>
             <div className="p-6 max-h-[60vh] overflow-y-auto">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ background: 'rgba(22, 163, 74, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> IA
-                  </div>
-                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibración exitosa</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ background: 'rgba(232, 163, 23, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> IA
-                  </div>
-                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibrando (o en cola)</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ background: 'rgba(220, 38, 38, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> IA
-                  </div>
-                  <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Error en autocalibración</span>
-                </div>
+                {ENABLE_AUTOCALIBRATION && (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ background: 'rgba(22, 163, 74, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> IA
+                      </div>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibración exitosa</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ background: 'rgba(232, 163, 23, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{width:6,height:6,borderRadius:"50%",background:"white"}}/> IA
+                      </div>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Autocalibrando (o en cola)</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ background: 'rgba(220, 38, 38, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg> IA
+                      </div>
+                      <span style={{ fontSize: '0.9rem', color: '#4d6684' }}>Error en autocalibración</span>
+                    </div>
+                  </>
+                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div style={{ background: 'rgba(22, 163, 74, 0.92)', color: 'white', fontSize: '0.66rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                     <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> CM

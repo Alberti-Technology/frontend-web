@@ -39,7 +39,7 @@ export function connectNotificationsWebSocket(token: string | null) {
   socket = new WebSocket(url.toString());
 
   socket.onopen = () => {
-    console.log("[notifications websocket] conectado");
+    // console.log("[notifications websocket] conectado");
   };
 
   socket.onmessage = (event) => {
@@ -47,11 +47,8 @@ export function connectNotificationsWebSocket(token: string | null) {
     try {
       payload = JSON.parse(event.data);
     } catch {
-      console.log("[notifications websocket]", event.data);
       return;
     }
-
-    console.log("[notifications websocket]", payload);
 
     if (
       payload &&

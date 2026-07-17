@@ -7,7 +7,6 @@ if (envEndpoint && envEndpoint.includes("45951") && !envEndpoint.endsWith("/rgb/
 }
 
 const HF_MASK_ENDPOINT = envEndpoint || "https://AlbertiTechnology-materialai.hf.space/segment/45951/rgb/";
-console.log("[DEBUG] HF_MASK_ENDPOINT configurado a:", HF_MASK_ENDPOINT);
 
 type ApiRequestError = Error & {
   status?: number;
