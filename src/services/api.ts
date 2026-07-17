@@ -2,10 +2,10 @@ import { API_BASE_URL, API_WAKEUP_RETRY_MS } from "../config/apiConfig";
 
 export const BASE_URL = API_BASE_URL;
 const configuredEndpoint = import.meta.env.VITE_HF_MASK_ENDPOINT || "";
-export const HF_BASE_URL = (configuredEndpoint || "https://AlbertiTechnology-materialai.hf.space").replace(/\/segment\/.*$/, "").replace(/\/$/, "");
+export const HF_BASE_URL = (configuredEndpoint || "https://dlalberti.duckdns.org:7860").replace(/\/segment\/.*$/, "").replace(/\/$/, "");
 const HF_MASK_ENDPOINT = configuredEndpoint 
   ? (configuredEndpoint.includes("/segment/") ? configuredEndpoint : `${HF_BASE_URL}/segment/45951/rgb/`) 
-  : "https://AlbertiTechnology-materialai.hf.space/segment/45951/rgb/";
+  : "https://dlalberti.duckdns.org:7860/segment/45951/rgb/";
 
 type ApiRequestError = Error & {
   status?: number;
