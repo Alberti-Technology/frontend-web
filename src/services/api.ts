@@ -887,3 +887,40 @@ export async function getCompanyStatus(): Promise<boolean> {
   }
   return true;
 }
+
+export interface InclusionPolygon {
+  points: { x: number; y: number }[];
+  confidence: number;
+  class_id: number;
+  class_name: string;
+}
+
+export async function detectInclusiones(imageUrl: string): Promise<InclusionPolygon[]> {
+  const imageResponse = await fetch(imageUrl);
+  if (!imageResponse.ok) {
+    throw new Error("No se pudo leer la imagen original para detección");
+  }
+
+  const imageBlob = await imageResponse.blob();
+  const type = imageBlob.type || "image/jpeg";
+  const extension = type.includes("png") ? "png" : "jpg";
+  const file = new File([imageBlob], `micrografia.${extension}`, { type });
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("https://dlalberti.duckdns.org:7860/detecciones/", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error("Error obteniendo detecciones del modelo");
+  }
+
+  const data = await response.json();
+  if (Array.isArray(data)) {
+    return data;
+  }
+  return data.polygons || data.boxes || [];
+}

@@ -1254,6 +1254,23 @@ const MaskIcon = () => (
     <path d="M9 15c.8 1 2 1.5 3 1.5s2.2-.5 3-1.5" />
   </svg>
 );
+const InclusionsIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+    <path d="M3 9h18" />
+    <path d="M9 21V9" />
+  </svg>
+);
 const ChartIcon = ({ size = 18 }: { size?: number }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -1361,6 +1378,10 @@ function ImageLightboxCarousel({
   onRetryAutoCalibration,
   onCheckMicrographLimit = (action) => action(),
   pushToast,
+  inclusionsByImageUrl = {},
+  inclusionsVisibleByImageUrl = {},
+  inclusionsLoadingByImageUrl = {},
+  onDetectInclusiones,
 }: {
   images: { name: string; url: string; id?: string }[];
   initialIndex: number;
@@ -1389,8 +1410,13 @@ function ImageLightboxCarousel({
   measurementOverlayVisibleByUrl?: Record<string, boolean>;
   onToggleMeasurementOverlay?: (imageUrl: string) => void;
   pushToast: (message: string, type?: "success" | "error" | "info" | "warning", duration?: number) => void;
+  inclusionsByImageUrl?: Record<string, api.InclusionPolygon[]>;
+  inclusionsVisibleByImageUrl?: Record<string, boolean>;
+  inclusionsLoadingByImageUrl?: Record<string, boolean>;
+  onDetectInclusiones?: (imageUrl: string) => Promise<void>;
 }) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [inclusionsThreshold, setInclusionsThreshold] = useState<number>(0.1);
   const [calibrationMode, setCalibrationMode] = useState(false);
   const [lineStart, setLineStart] = useState<{ x: number; y: number } | null>(
     null,
@@ -1433,8 +1459,56 @@ function ImageLightboxCarousel({
   });
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const inclusionsCanvasRef = useRef<HTMLCanvasElement>(null);
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+
+  const currentImage = images[currentIndex];
+
+  useEffect(() => {
+    const canvas = inclusionsCanvasRef.current;
+    const img = imgRef.current;
+    if (!canvas || !img) return;
+    
+    // Sync size
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    canvas.style.width = img.clientWidth + "px";
+    canvas.style.height = img.clientHeight + "px";
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    const isVisible = inclusionsVisibleByImageUrl?.[currentImage?.url];
+    const polygons = inclusionsByImageUrl?.[currentImage?.url];
+    
+    if (isVisible && polygons) {
+      ctx.strokeStyle = "#00ff00";
+      ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
+      ctx.lineWidth = Math.max(1, Math.round(canvas.width / 500));
+      for (const poly of polygons) {
+        if (poly.confidence >= inclusionsThreshold && poly.points && poly.points.length > 0) {
+          ctx.beginPath();
+          ctx.moveTo(poly.points[0].x, poly.points[0].y);
+          for (let i = 1; i < poly.points.length; i++) {
+            ctx.lineTo(poly.points[i].x, poly.points[i].y);
+          }
+          ctx.closePath();
+          ctx.stroke();
+          ctx.fill();
+        }
+      }
+    }
+  }, [
+    currentImage?.url, 
+    inclusionsByImageUrl, 
+    inclusionsVisibleByImageUrl, 
+    inclusionsThreshold, 
+    currentIndex
+  ]);
+
 
   // ---- Mask editing state ----
   const [maskEditTool, setMaskEditTool] = useState<"pencil" | "eraser" | null>(
@@ -1451,7 +1525,6 @@ function ImageLightboxCarousel({
     setDrawByImageUrl(readDrawCacheStore());
   }, []);
 
-  const currentImage = images[currentIndex];
   const hasSiblingImages = images.length > 1;
   const currentImageIsCalibrable = !!calibrableByUrl[currentImage.url];
   const hasCalibration = !!calibrationData[currentImage.url];
@@ -2428,6 +2501,18 @@ function ImageLightboxCarousel({
               />
             )}
             <canvas
+              ref={inclusionsCanvasRef}
+              style={{
+                position: "absolute",
+                top: showAiFx ? 4 : 0,
+                left: showAiFx ? 4 : 0,
+                display: "block",
+                pointerEvents: "none",
+                zIndex: 3,
+                borderRadius: 8,
+              }}
+            />
+            <canvas
               ref={canvasRef}
               style={{
                 position: "absolute",
@@ -2520,6 +2605,9 @@ function ImageLightboxCarousel({
             background: "rgba(0,0,0,0.52)",
             border: "1px solid rgba(255,255,255,0.14)",
             backdropFilter: "blur(4px)",
+            overflowY: "auto",
+            overflowX: "hidden",
+            scrollbarWidth: "none",
             display: "flex",
             flexDirection: "column",
             justifyContent: currentImageIsCalibrable
@@ -2709,6 +2797,72 @@ function ImageLightboxCarousel({
               >
                 <MaskIcon />
               </button>
+              {/* ---- Inclusions tool ---- */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                <button
+                  title={
+                    inclusionsLoadingByImageUrl?.[currentImage.url]
+                      ? "Detectando inclusiones..."
+                      : inclusionsVisibleByImageUrl?.[currentImage.url]
+                        ? "Ocultar Inclusiones"
+                        : "Detectar Inclusiones"
+                  }
+                  style={{
+                    width: 44,
+                    height: 44,
+                    flexShrink: 0,
+                    borderRadius: "50%",
+                    border: "none",
+                    background: inclusionsVisibleByImageUrl?.[currentImage.url]
+                      ? "rgba(51,158,234,0.88)"
+                      : "rgba(0,0,0,0.56)",
+                    color: "white",
+                    cursor: inclusionsLoadingByImageUrl?.[currentImage.url] ? "wait" : "pointer",
+                    lineHeight: 0,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "background 0.15s",
+                    opacity: inclusionsLoadingByImageUrl?.[currentImage.url] ? 0.65 : 1,
+                  }}
+                  disabled={inclusionsLoadingByImageUrl?.[currentImage.url]}
+                  onClick={() => onCheckMicrographLimit(() => {
+                    if (onDetectInclusiones) {
+                      void onDetectInclusiones(currentImage.url);
+                    }
+                  })}
+                  onMouseOver={(e) => {
+                    if (inclusionsLoadingByImageUrl?.[currentImage.url] || inclusionsVisibleByImageUrl?.[currentImage.url]) return;
+                    e.currentTarget.style.background = "rgba(51,158,234,0.78)";
+                  }}
+                  onMouseOut={(e) => {
+                    if (inclusionsLoadingByImageUrl?.[currentImage.url] || inclusionsVisibleByImageUrl?.[currentImage.url]) return;
+                    e.currentTarget.style.background = "rgba(0,0,0,0.56)";
+                  }}
+                >
+                  <InclusionsIcon />
+                </button>
+                {inclusionsVisibleByImageUrl?.[currentImage.url] && (
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={inclusionsThreshold}
+                    onChange={(e) => setInclusionsThreshold(parseFloat(e.target.value))}
+                    title={`Threshold de confianza: ${(inclusionsThreshold * 100).toFixed(0)}%`}
+                    style={{
+                      height: 100,
+                      width: 40,
+                      writingMode: "vertical-lr",
+                      direction: "rtl",
+                      accentColor: "#339eea",
+                      cursor: "pointer",
+                      margin: 0
+                    }}
+                  />
+                )}
+              </div>
               {/* ---- Chart tool ---- */}
               <button
                 title={
@@ -3682,6 +3836,10 @@ export default function FileManager({
   );
   const [calibratingByUrl, setCalibratingByUrl] = useState<Record<string, boolean>>({});
   const [failedCalibrationByUrl, setFailedCalibrationByUrl] = useState<Record<string, boolean>>({});
+  const [inclusionsByImageUrl, setInclusionsByImageUrl] = useState<Record<string, api.InclusionPolygon[]>>({});
+  const [inclusionsVisibleByImageUrl, setInclusionsVisibleByImageUrl] = useState<Record<string, boolean>>({});
+  const [inclusionsLoadingByImageUrl, setInclusionsLoadingByImageUrl] = useState<Record<string, boolean>>({});
+
 
   // Derived state for the UI
   const fixImageUrl = useCallback(
@@ -5191,6 +5349,38 @@ export default function FileManager({
     ],
   );
 
+  const handleDetectInclusiones = useCallback(
+    async (imageUrl: string) => {
+      const hasInclusionsLoaded = !!inclusionsByImageUrl[imageUrl];
+      if (hasInclusionsLoaded) {
+        setInclusionsVisibleByImageUrl((prev) => ({
+          ...prev,
+          [imageUrl]: !prev[imageUrl],
+        }));
+        return;
+      }
+
+      if (inclusionsLoadingByImageUrl[imageUrl]) return;
+
+      setInclusionsLoadingByImageUrl((prev) => ({ ...prev, [imageUrl]: true }));
+      pushToast("Detectando inclusiones...", "info", 4000);
+
+      try {
+        const boxes = await api.detectInclusiones(imageUrl);
+        setInclusionsByImageUrl((prev) => ({ ...prev, [imageUrl]: boxes }));
+        setInclusionsVisibleByImageUrl((prev) => ({ ...prev, [imageUrl]: true }));
+        pushToast("Inclusiones detectadas.", "success", 4000);
+      } catch (err) {
+        const maybeApiError = err as ApiLikeError;
+        const msg = maybeApiError?.message || "No se pudo detectar inclusiones.";
+        pushToast(msg, "error", 6000);
+      } finally {
+        setInclusionsLoadingByImageUrl((prev) => ({ ...prev, [imageUrl]: false }));
+      }
+    },
+    [inclusionsByImageUrl, inclusionsLoadingByImageUrl, pushToast]
+  );
+
   // ---- Action Row ----
   const ItemRow = ({
     id,
@@ -6190,6 +6380,10 @@ export default function FileManager({
             maskLabelsByImageUrl={maskLabelsByImageUrl}
             maskVisibleByImageUrl={maskVisibleByImageUrl}
             maskLoadingByImageUrl={maskLoadingByImageUrl}
+            inclusionsByImageUrl={inclusionsByImageUrl}
+            inclusionsVisibleByImageUrl={inclusionsVisibleByImageUrl}
+            inclusionsLoadingByImageUrl={inclusionsLoadingByImageUrl}
+            onDetectInclusiones={handleDetectInclusiones}
             lastMicrometers={lastMicrometers}
             contextInfo={lightboxContextInfo}
             measurementOverlayById={measurementOverlayById}
