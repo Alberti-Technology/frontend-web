@@ -1449,6 +1449,11 @@ function ImageLightboxCarousel({
   >("overview");
   const [pixelLength, setPixelLength] = useState(0);
   const [detectedPixelLength, setDetectedPixelLength] = useState(0);
+  const [hoveredInclusion, setHoveredInclusion] = useState<{
+    poly: api.InclusionPolygon;
+    x: number;
+    y: number;
+  } | null>(null);
   const [editorLayout, setEditorLayout] = useState({
     imageWidth: 640,
     imageHeight: 360,
@@ -2406,6 +2411,54 @@ function ImageLightboxCarousel({
       >
         <div
           ref={imageContainerRef}
+          onMouseMove={(e) => {
+            const polygons = inclusionsByImageUrl?.[currentImage?.url];
+            const isVisible = inclusionsVisibleByImageUrl?.[currentImage?.url];
+            if (!isVisible || !polygons || polygons.length === 0) {
+              setHoveredInclusion(null);
+              return;
+            }
+            
+            const img = imgRef.current;
+            const container = imageContainerRef.current;
+            if (!img || !container) return;
+            
+            const rect = img.getBoundingClientRect();
+            const scaleX = img.naturalWidth / rect.width;
+            const scaleY = img.naturalHeight / rect.height;
+            
+            const clientX = e.clientX - rect.left;
+            const clientY = e.clientY - rect.top;
+            
+            const x = clientX * scaleX;
+            const y = clientY * scaleY;
+            
+            let found = null;
+            for (const poly of polygons) {
+              if (poly.confidence < inclusionsThreshold) continue;
+              
+              let inside = false;
+              for (let i = 0, j = poly.points.length - 1; i < poly.points.length; j = i++) {
+                const xi = poly.points[i].x, yi = poly.points[i].y;
+                const xj = poly.points[j].x, yj = poly.points[j].y;
+                const intersect = ((yi > y) !== (yj > y))
+                    && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+              }
+              if (inside) {
+                found = poly;
+                break;
+              }
+            }
+            
+            if (found) {
+              const containerRect = container.getBoundingClientRect();
+              setHoveredInclusion({ poly: found, x: e.clientX - containerRect.left, y: e.clientY - containerRect.top });
+            } else {
+              setHoveredInclusion(null);
+            }
+          }}
+          onMouseLeave={() => setHoveredInclusion(null)}
           style={{
             maxWidth: imageMaxWidth + borderPad,
             maxHeight: imageMaxHeight + borderPad,
@@ -2573,11 +2626,39 @@ function ImageLightboxCarousel({
                     boxShadow: "0 6px 14px rgba(0,0,0,0.25)",
                     pointerEvents: "none",
                     zIndex: 5,
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  {measurementDistanceUm.toFixed(1)} µm
+                  {measurementDistanceUm.toFixed(2)} µm
                 </div>
               )}
+            {hoveredInclusion && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: hoveredInclusion.x + 10,
+                  top: hoveredInclusion.y - 20,
+                  padding: "6px 12px",
+                  background: "rgba(0,0,0,0.65)",
+                  color: "white",
+                  fontSize: "0.85rem",
+                  fontFamily: "monospace, Courier New, Courier, serif",
+                  borderRadius: 8,
+                  pointerEvents: "none",
+                  zIndex: 20,
+                  whiteSpace: "nowrap",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  backdropFilter: "blur(8px)",
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+                  display: "flex",
+                  gap: "8px",
+                  alignItems: "center"
+                }}
+              >
+                <span style={{ fontWeight: 600, color: "#4caf50" }}>{hoveredInclusion.poly.class_name}</span>
+                <span style={{ opacity: 0.85 }}>{(hoveredInclusion.poly.confidence * 100).toFixed(1)}%</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -2596,12 +2677,9 @@ function ImageLightboxCarousel({
           style={{
             width: 62,
             minHeight: currentImageIsCalibrable ? 300 : 112,
-            maxHeight: Math.max(
-              currentImageIsCalibrable ? 380 : 120,
-              Math.min(560, editorLayout.imageHeight + 26),
-            ),
+            maxHeight: `calc(100vh - 40px)`, // Ensure it fits viewport
             borderRadius: 999,
-            padding: currentImageIsCalibrable ? "10px 8px 14px" : "8px",
+            padding: currentImageIsCalibrable ? "16px 8px 0px 8px" : "8px 8px 0px 8px", // Move bottom padding to a spacer
             background: "rgba(0,0,0,0.52)",
             border: "1px solid rgba(255,255,255,0.14)",
             backdropFilter: "blur(4px)",
@@ -2843,24 +2921,38 @@ function ImageLightboxCarousel({
                   <InclusionsIcon />
                 </button>
                 {inclusionsVisibleByImageUrl?.[currentImage.url] && (
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={inclusionsThreshold}
-                    onChange={(e) => setInclusionsThreshold(parseFloat(e.target.value))}
-                    title={`Threshold de confianza: ${(inclusionsThreshold * 100).toFixed(0)}%`}
-                    style={{
-                      height: 100,
-                      width: 40,
-                      writingMode: "vertical-lr",
-                      direction: "rtl",
-                      accentColor: "#339eea",
-                      cursor: "pointer",
-                      margin: 0
-                    }}
-                  />
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                    <span style={{ 
+                      fontSize: 12, 
+                      fontWeight: "bold", 
+                      color: "white", 
+                      userSelect: "none",
+                      background: "rgba(0,0,0,0.56)",
+                      padding: "4px 8px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.1)"
+                    }}>
+                      {(inclusionsThreshold * 100).toFixed(0)}%
+                    </span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={inclusionsThreshold}
+                      onChange={(e) => setInclusionsThreshold(parseFloat(e.target.value))}
+                      title={`Threshold de confianza: ${(inclusionsThreshold * 100).toFixed(0)}%`}
+                      style={{
+                        height: 100,
+                        width: 40,
+                        writingMode: "vertical-lr",
+                        direction: "rtl",
+                        accentColor: "#339eea",
+                        cursor: "pointer",
+                        margin: 0
+                      }}
+                    />
+                  </div>
                 )}
               </div>
               {/* ---- Chart tool ---- */}
@@ -3109,6 +3201,7 @@ function ImageLightboxCarousel({
               <ArrowRightIcon />
             </button>
           </div>
+          <div style={{ flexShrink: 0, height: 16, width: "100%" }} />
         </aside>
       </div>
 
