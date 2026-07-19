@@ -1490,8 +1490,8 @@ function ImageLightboxCarousel({
     const polygons = inclusionsByImageUrl?.[currentImage?.url];
     
     if (isVisible && polygons) {
-      ctx.strokeStyle = "#00ff00";
-      ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
+      ctx.strokeStyle = "#ff00ff"; // Magenta contrast
+      ctx.fillStyle = "rgba(255, 0, 255, 0.2)";
       ctx.lineWidth = Math.max(1, Math.round(canvas.width / 500));
       for (const poly of polygons) {
         if (poly.confidence >= inclusionsThreshold && poly.points && poly.points.length > 0) {
@@ -2655,7 +2655,7 @@ function ImageLightboxCarousel({
                   alignItems: "center"
                 }}
               >
-                <span style={{ fontWeight: 600, color: "#4caf50" }}>{hoveredInclusion.poly.class_name}</span>
+                <span style={{ fontWeight: 600, color: "#ff00ff" }}>Confianza:</span>
                 <span style={{ opacity: 0.85 }}>{(hoveredInclusion.poly.confidence * 100).toFixed(1)}%</span>
               </div>
             )}
