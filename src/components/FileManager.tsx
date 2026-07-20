@@ -8,6 +8,7 @@ import React, {
 import { createPortal } from "react-dom";
 import * as api from "../services/api";
 import { CLOUDINARY_BASE_URL } from "../config/apiConfig";
+import { MaskLegend } from "./MaskLegend";
 import {
   MICROGRAPHY_MEASURE_COMPLETED_EVENT,
   type MicrographyMeasureCompletedEvent,
@@ -1354,7 +1355,7 @@ const EraserIcon = () => (
 // ==========================================
 // IMAGE LIGHTBOX CAROUSEL (with calibration)
 // ==========================================
-function ImageLightboxCarousel({
+export function ImageLightboxCarousel({
   images,
   initialIndex,
   calibrableByUrl,
@@ -3488,57 +3489,12 @@ function ImageLightboxCarousel({
                       width: "100%",
                     }}
                   >
-                    <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>
-                      {isMaskLoading
-                        ? "Estado: generando máscara"
-                        : currentMaskUrl
-                          ? isMaskVisible
-                            ? "Estado: máscara visible (65%)"
-                            : "Estado: máscara oculta"
-                          : "Estado: sin máscara generada"}
-                    </span>
-                    {maskLegendEntries.length > 0 ? (
-                      <div
-                        style={{
-                          width: "100%",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 6,
-                        }}
-                      >
-                        {maskLegendEntries.map((entry) => (
-                          <div
-                            key={entry.id}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 8,
-                              fontSize: "0.82rem",
-                              fontWeight: 600,
-                              lineHeight: 1.25,
-                            }}
-                          >
-                            <span
-                              style={{
-                                width: 12,
-                                height: 12,
-                                borderRadius: 999,
-                                border: "1px solid rgba(255,255,255,0.48)",
-                                background: `rgb(${entry.color[0]}, ${entry.color[1]}, ${entry.color[2]})`,
-                                flexShrink: 0,
-                              }}
-                            />
-                            <span>
-                              {entry.name} ({entry.colorLabel})
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: "0.8rem", opacity: 0.9 }}>
-                        No hay clases disponibles para esta imagen.
-                      </span>
-                    )}
+                    <MaskLegend 
+                      maskLegendEntries={maskLegendEntries} 
+                      isMaskLoading={isMaskLoading} 
+                      currentMaskUrl={currentMaskUrl} 
+                      isMaskVisible={isMaskVisible} 
+                    />
                   </div>
                 )}
             </>
