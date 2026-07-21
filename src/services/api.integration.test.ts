@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
@@ -24,6 +25,11 @@ describe('Integración de Modelos - Servidor VPS (Metalografía)', () => {
       method: 'POST',
       body: formData,
     });
+
+    if (response.status !== 200) {
+      const errorText = await response.text();
+      console.error('API Error Response:', errorText);
+    }
 
     // 3. Validar el contrato de red (HTTP Status)
     expect(response.status).toBe(200);
