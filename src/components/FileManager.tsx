@@ -8,7 +8,7 @@ import React, {
 import { createPortal } from "react-dom";
 import * as api from "../services/api";
 import { CLOUDINARY_BASE_URL } from "../config/apiConfig";
-import { OverlayLegend, type LegendEntry } from "./OverlayLegend";
+import { MaskLegend } from "./MaskLegend";
 import {
   MICROGRAPHY_MEASURE_COMPLETED_EVENT,
   type MicrographyMeasureCompletedEvent,
@@ -3489,10 +3489,8 @@ export function ImageLightboxCarousel({
               {(activeSidebarTool === "mask" && !isDrawingToolActive && (isMaskVisible || isMaskLoading || inclusionsVisibleByImageUrl?.[currentImage?.url] || inclusionsLoadingByImageUrl?.[currentImage?.url])) && (() => {
                   const currentInclusions = inclusionsByImageUrl?.[currentImage?.url] || [];
                   const hasVisibleInclusions = currentInclusions.some(poly => poly.confidence >= inclusionsThreshold);
-                  
-                  const inclusionLegendEntries: LegendEntry[] = hasVisibleInclusions 
-                    ? [{ id: "inclusiones", name: "Inclusiones", color: [255, 0, 255] }]
-                    : [];
+                  const showInclusions = inclusionsVisibleByImageUrl?.[currentImage?.url];
+                  const loadInclusions = inclusionsLoadingByImageUrl?.[currentImage?.url];
 
                   return (
                     <div
@@ -3503,15 +3501,33 @@ export function ImageLightboxCarousel({
                         width: "100%",
                       }}
                     >
-                      <OverlayLegend 
-                        maskLegendEntries={maskLegendEntries} 
-                        isMaskLoading={isMaskLoading} 
-                        currentMaskUrl={currentMaskUrl} 
-                        isMaskVisible={isMaskVisible}
-                        inclusionLegendEntries={inclusionLegendEntries}
-                        isInclusionsVisible={!!inclusionsVisibleByImageUrl?.[currentImage?.url]}
-                        isInclusionsLoading={!!inclusionsLoadingByImageUrl?.[currentImage?.url]}
-                      />
+                      {(isMaskVisible || isMaskLoading) && (
+                        <MaskLegend 
+                          maskLegendEntries={maskLegendEntries} 
+                          isMaskLoading={isMaskLoading} 
+                          currentMaskUrl={currentMaskUrl} 
+                          isMaskVisible={isMaskVisible} 
+                        />
+                      )}
+                      
+                      {(showInclusions || loadInclusions) && (
+                        <>
+                          <div style={{ height: 1, background: "rgba(255,255,255,0.1)", margin: "4px 0" }} />
+                          <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>
+                            {loadInclusions
+                              ? "Inclusiones: buscando..."
+                              : showInclusions
+                                ? "Inclusiones: visibles"
+                                : "Inclusiones: ocultas"}
+                          </span>
+                          {hasVisibleInclusions && showInclusions && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem", fontWeight: 600, lineHeight: 1.25 }}>
+                              <span style={{ width: 12, height: 12, borderRadius: 999, border: "1px solid rgba(255,255,255,0.48)", background: "rgb(255, 0, 255)", flexShrink: 0 }} />
+                              <span>Inclusiones</span>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   );
                 })()}
