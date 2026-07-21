@@ -1,17 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { HF_BASE_URL } from './api';
+import fs from 'fs';
+import path from 'path';
 
-describe('Integración de Modelos - Hugging Face', () => {
-  // Se marca con 'skip' para que no rompa los tests locales a menos que se le provea
-  // un archivo real de acero. Gradio/FastAPI devuelve 422 Unprocessable Entity
-  // si le mandamos un PNG de 1x1 en lugar de una muestra real.
-  it.skip('el endpoint de Hugging Face de máscaras debe devolver el formato de contrato esperado', async () => {
-    // 1. Crear una imagen básica en memoria (1 píxel blanco) para enviar al modelo
-    // Esto evita depender de URLs externas que puedan caerse.
-    const transparentPixel = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
-    const blob = await (await fetch('data:image/png;base64,' + transparentPixel)).blob();
+describe('Integración de Modelos - Servidor VPS (Metalografía)', () => {
+  // Le sacamos el '.skip' para que siempre se pruebe en el CI y desarrollo local.
+  it('el endpoint de máscaras debe devolver el formato de contrato esperado', async () => {
+    // 1. Leer la imagen real de acero desde el disco local
+    const fixturePath = path.join(__dirname, '../tests/__fixtures__/acero.jpg');
+    
+    if (!fs.existsSync(fixturePath)) {
+      throw new Error("Por favor guarda la imagen adjunta como 'acero.jpg' dentro de src/tests/__fixtures__/ para ejecutar el test.");
+    }
+
+    const fileBuffer = fs.readFileSync(fixturePath);
+    const blob = new Blob([fileBuffer], { type: 'image/jpeg' });
     const formData = new FormData();
-    formData.append('file', blob, 'test.png');
+    formData.append('file', blob, 'acero.jpg');
 
     const endpoint = 'https://dlalberti.duckdns.org:7860/segment/45951/rgb/';
 

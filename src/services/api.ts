@@ -1,8 +1,8 @@
 import { API_BASE_URL, API_WAKEUP_RETRY_MS } from "../config/apiConfig";
 
 export const BASE_URL = API_BASE_URL;
-export const HF_BASE_URL = "https://dlalberti.duckdns.org:7860";
-const HF_MASK_ENDPOINT = "https://dlalberti.duckdns.org:7860/segment/45951/rgb/";
+export const HF_BASE_URL = import.meta.env.VITE_HF_BASE_URL || "https://dlalberti.duckdns.org:7860";
+const HF_MASK_ENDPOINT = import.meta.env.VITE_HF_MASK_ENDPOINT || "https://dlalberti.duckdns.org:7860/segment/45951/rgb/";
 
 type ApiRequestError = Error & {
   status?: number;
