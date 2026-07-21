@@ -8,7 +8,7 @@ import React, {
 import { createPortal } from "react-dom";
 import * as api from "../services/api";
 import { CLOUDINARY_BASE_URL } from "../config/apiConfig";
-import { MaskLegend } from "./MaskLegend";
+import { OverlayLegend, type LegendEntry } from "./OverlayLegend";
 import {
   MICROGRAPHY_MEASURE_COMPLETED_EVENT,
   type MicrographyMeasureCompletedEvent,
@@ -1491,7 +1491,7 @@ export function ImageLightboxCarousel({
     const polygons = inclusionsByImageUrl?.[currentImage?.url];
     
     if (isVisible && polygons) {
-      ctx.strokeStyle = "#ff00ff"; // Magenta contrast
+      ctx.strokeStyle = "#ff00ff";
       ctx.fillStyle = "rgba(255, 0, 255, 0.2)";
       ctx.lineWidth = Math.max(1, Math.round(canvas.width / 500));
       for (const poly of polygons) {
@@ -2637,8 +2637,8 @@ export function ImageLightboxCarousel({
               <div
                 style={{
                   position: "absolute",
-                  left: hoveredInclusion.x + 10,
-                  top: hoveredInclusion.y - 20,
+                  left: Math.min(hoveredInclusion.x + 10, editorLayout.imageWidth - 140),
+                  top: Math.max(hoveredInclusion.y - 20, 10),
                   padding: "6px 12px",
                   background: "rgba(0,0,0,0.65)",
                   color: "white",
@@ -2719,15 +2719,18 @@ export function ImageLightboxCarousel({
                       ? "rgba(51,158,234,0.88)"
                       : "rgba(0,0,0,0.56)",
                   color: "white",
-                  cursor: "pointer",
+                  cursor: isMeasurementOverlayVisible ? "default" : "pointer",
                   lineHeight: 0,
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
                   transition: "background 0.15s, transform 0.15s",
+                  opacity: isMeasurementOverlayVisible ? 0.4 : 1,
                 }}
+                disabled={isMeasurementOverlayVisible}
                 onClick={() => onCheckMicrographLimit(handleActivateCalibration)}
                 onMouseOver={(e) => {
+                  if (isMeasurementOverlayVisible) return;
                   if (!calibrationMode)
                     e.currentTarget.style.background = "rgba(51,158,234,0.78)";
                 }}
@@ -2798,14 +2801,15 @@ export function ImageLightboxCarousel({
                       ? "rgba(51,158,234,0.88)"
                       : "rgba(0,0,0,0.56)",
                   color: "white",
-                  cursor: measurementEnabled ? "pointer" : "default",
+                  cursor: measurementEnabled && !isMeasurementOverlayVisible ? "pointer" : "default",
                   lineHeight: 0,
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
                   transition: "background 0.15s",
-                  opacity: measurementEnabled ? 1 : 0.55,
+                  opacity: isMeasurementOverlayVisible ? 0.4 : (measurementEnabled ? 1 : 0.55),
                 }}
+                disabled={isMeasurementOverlayVisible}
                 onClick={() => onCheckMicrographLimit(() => {
                   if (!measurementEnabled) return;
                   handleActivateMeasurement();
@@ -2813,7 +2817,8 @@ export function ImageLightboxCarousel({
                 onMouseOver={(e) => {
                   if (
                     !measurementEnabled ||
-                    activeSidebarTool === "measurement"
+                    activeSidebarTool === "measurement" ||
+                    isMeasurementOverlayVisible
                   )
                     return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
@@ -2848,15 +2853,15 @@ export function ImageLightboxCarousel({
                     ? "rgba(51,158,234,0.88)"
                     : "rgba(0,0,0,0.56)",
                   color: "white",
-                  cursor: isMaskLoading ? "wait" : "pointer",
+                  cursor: isMeasurementOverlayVisible ? "default" : (isMaskLoading ? "wait" : "pointer"),
                   lineHeight: 0,
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
                   transition: "background 0.15s",
-                  opacity: isMaskLoading ? 0.65 : 1,
+                  opacity: isMeasurementOverlayVisible ? 0.4 : (isMaskLoading ? 0.65 : 1),
                 }}
-                disabled={isMaskLoading}
+                disabled={isMaskLoading || isMeasurementOverlayVisible}
                 onClick={() => onCheckMicrographLimit(() => {
                   if (isMaskVisible) {
                     setActiveSidebarTool("overview");
@@ -2866,7 +2871,7 @@ export function ImageLightboxCarousel({
                   void onGenerateMask(currentImage.url);
                 })}
                 onMouseOver={(e) => {
-                  if (isMaskLoading || isMaskVisible) return;
+                  if (isMaskLoading || isMaskVisible || isMeasurementOverlayVisible) return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
                 }}
                 onMouseOut={(e) => {
@@ -2896,22 +2901,23 @@ export function ImageLightboxCarousel({
                       ? "rgba(51,158,234,0.88)"
                       : "rgba(0,0,0,0.56)",
                     color: "white",
-                    cursor: inclusionsLoadingByImageUrl?.[currentImage.url] ? "wait" : "pointer",
+                    cursor: isMeasurementOverlayVisible ? "default" : (inclusionsLoadingByImageUrl?.[currentImage.url] ? "wait" : "pointer"),
                     lineHeight: 0,
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
                     transition: "background 0.15s",
-                    opacity: inclusionsLoadingByImageUrl?.[currentImage.url] ? 0.65 : 1,
+                    opacity: isMeasurementOverlayVisible ? 0.4 : (inclusionsLoadingByImageUrl?.[currentImage.url] ? 0.65 : 1),
                   }}
-                  disabled={inclusionsLoadingByImageUrl?.[currentImage.url]}
+                  disabled={inclusionsLoadingByImageUrl?.[currentImage.url] || isMeasurementOverlayVisible}
                   onClick={() => onCheckMicrographLimit(() => {
+                    setActiveSidebarTool((prev) => (prev === "overview" ? "mask" : prev));
                     if (onDetectInclusiones) {
                       void onDetectInclusiones(currentImage.url);
                     }
                   })}
                   onMouseOver={(e) => {
-                    if (inclusionsLoadingByImageUrl?.[currentImage.url] || inclusionsVisibleByImageUrl?.[currentImage.url]) return;
+                    if (inclusionsLoadingByImageUrl?.[currentImage.url] || inclusionsVisibleByImageUrl?.[currentImage.url] || isMeasurementOverlayVisible) return;
                     e.currentTarget.style.background = "rgba(51,158,234,0.78)";
                   }}
                   onMouseOut={(e) => {
@@ -2974,15 +2980,15 @@ export function ImageLightboxCarousel({
                     ? "rgba(51,158,234,0.88)"
                     : "rgba(0,0,0,0.56)",
                   color: "white",
-                  cursor: "pointer",
+                  cursor: (activeSidebarTool !== "overview" && !isMeasurementOverlayVisible) ? "default" : "pointer",
                   lineHeight: 0,
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
                   transition: "background 0.15s",
-                  opacity: currentMeasurementOverlayUrl ? 1 : 0.55,
+                  opacity: currentMeasurementOverlayUrl ? ((activeSidebarTool !== "overview" && !isMeasurementOverlayVisible) ? 0.4 : 1) : 0.55,
                 }}
-                disabled={false}
+                disabled={!currentMeasurementOverlayUrl || (activeSidebarTool !== "overview" && !isMeasurementOverlayVisible)}
                 onClick={(e) => {
                   e.stopPropagation();
                   onCheckMicrographLimit(() => {
@@ -2996,11 +3002,11 @@ export function ImageLightboxCarousel({
                   });
                 }}
                 onMouseOver={(e) => {
-                  if (!currentMeasurementOverlayUrl || isMeasurementOverlayVisible) return;
+                  if (!currentMeasurementOverlayUrl || isMeasurementOverlayVisible || (activeSidebarTool !== "overview" && !isMeasurementOverlayVisible)) return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
                 }}
                 onMouseOut={(e) => {
-                  if (!currentMeasurementOverlayUrl || isMeasurementOverlayVisible) return;
+                  if (!currentMeasurementOverlayUrl || isMeasurementOverlayVisible || (activeSidebarTool !== "overview" && !isMeasurementOverlayVisible)) return;
                   e.currentTarget.style.background = "rgba(0,0,0,0.56)";
                 }}
               >
@@ -3019,14 +3025,15 @@ export function ImageLightboxCarousel({
                       ? "rgba(51,158,234,0.88)"
                       : "rgba(0,0,0,0.56)",
                   color: "white",
-                  cursor: "pointer",
+                  cursor: isMeasurementOverlayVisible ? "default" : "pointer",
                   lineHeight: 0,
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
                   transition: "background 0.15s",
-                  opacity: 1,
+                  opacity: isMeasurementOverlayVisible ? 0.4 : 1,
                 }}
+                disabled={isMeasurementOverlayVisible}
                 onClick={() => onCheckMicrographLimit(() => {
                   setActiveSidebarTool("mask");
                   setMaskEditTool((prev) =>
@@ -3034,7 +3041,7 @@ export function ImageLightboxCarousel({
                   );
                 })}
                 onMouseOver={(e) => {
-                  if (maskEditTool === "pencil") return;
+                  if (maskEditTool === "pencil" || isMeasurementOverlayVisible) return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
                 }}
                 onMouseOut={(e) => {
@@ -3057,14 +3064,15 @@ export function ImageLightboxCarousel({
                       ? "rgba(51,158,234,0.88)"
                       : "rgba(0,0,0,0.56)",
                   color: "white",
-                  cursor: "pointer",
+                  cursor: isMeasurementOverlayVisible ? "default" : "pointer",
                   lineHeight: 0,
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
                   transition: "background 0.15s",
-                  opacity: 1,
+                  opacity: isMeasurementOverlayVisible ? 0.4 : 1,
                 }}
+                disabled={isMeasurementOverlayVisible}
                 onClick={() => onCheckMicrographLimit(() => {
                   setActiveSidebarTool("mask");
                   setMaskEditTool((prev) =>
@@ -3072,7 +3080,7 @@ export function ImageLightboxCarousel({
                   );
                 })}
                 onMouseOver={(e) => {
-                  if (maskEditTool === "eraser") return;
+                  if (maskEditTool === "eraser" || isMeasurementOverlayVisible) return;
                   e.currentTarget.style.background = "rgba(51,158,234,0.78)";
                 }}
                 onMouseOut={(e) => {
@@ -3478,25 +3486,35 @@ export function ImageLightboxCarousel({
                 </div>
               )}
 
-              {activeSidebarTool === "mask" &&
-                !isDrawingToolActive &&
-                (isMaskVisible || isMaskLoading) && (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 8,
-                      width: "100%",
-                    }}
-                  >
-                    <MaskLegend 
-                      maskLegendEntries={maskLegendEntries} 
-                      isMaskLoading={isMaskLoading} 
-                      currentMaskUrl={currentMaskUrl} 
-                      isMaskVisible={isMaskVisible} 
-                    />
-                  </div>
-                )}
+              {(activeSidebarTool === "mask" && !isDrawingToolActive && (isMaskVisible || isMaskLoading || inclusionsVisibleByImageUrl?.[currentImage?.url] || inclusionsLoadingByImageUrl?.[currentImage?.url])) && (() => {
+                  const currentInclusions = inclusionsByImageUrl?.[currentImage?.url] || [];
+                  const hasVisibleInclusions = currentInclusions.some(poly => poly.confidence >= inclusionsThreshold);
+                  
+                  const inclusionLegendEntries: LegendEntry[] = hasVisibleInclusions 
+                    ? [{ id: "inclusiones", name: "Inclusiones", color: [255, 0, 255] }]
+                    : [];
+
+                  return (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                        width: "100%",
+                      }}
+                    >
+                      <OverlayLegend 
+                        maskLegendEntries={maskLegendEntries} 
+                        isMaskLoading={isMaskLoading} 
+                        currentMaskUrl={currentMaskUrl} 
+                        isMaskVisible={isMaskVisible}
+                        inclusionLegendEntries={inclusionLegendEntries}
+                        isInclusionsVisible={!!inclusionsVisibleByImageUrl?.[currentImage?.url]}
+                        isInclusionsLoading={!!inclusionsLoadingByImageUrl?.[currentImage?.url]}
+                      />
+                    </div>
+                  );
+                })()}
             </>
           )}
         </div>

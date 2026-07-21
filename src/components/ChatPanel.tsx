@@ -435,15 +435,26 @@ export default function ChatPanel() {
             alignSelf: 'flex-start',
             background: '#eef8ff',
             color: '#10243f',
-            padding: '12px 16px',
+            padding: '14px 18px',
             borderRadius: '14px',
             display: 'flex',
-            gap: '4px',
-            alignItems: 'center'
+            flexDirection: 'column',
+            gap: '10px',
+            maxWidth: '320px',
           }}>
-            <div style={{ width: '6px', height: '6px', background: '#339eea', borderRadius: '50%', animation: 'typing 1.4s infinite ease-in-out both' }}></div>
-            <div style={{ width: '6px', height: '6px', background: '#339eea', borderRadius: '50%', animation: 'typing 1.4s infinite ease-in-out both', animationDelay: '0.2s' }}></div>
-            <div style={{ width: '6px', height: '6px', background: '#339eea', borderRadius: '50%', animation: 'typing 1.4s infinite ease-in-out both', animationDelay: '0.4s' }}></div>
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+              <div style={{ width: '6px', height: '6px', background: '#339eea', borderRadius: '50%', animation: 'typing 1.4s infinite ease-in-out both' }}></div>
+              <div style={{ width: '6px', height: '6px', background: '#339eea', borderRadius: '50%', animation: 'typing 1.4s infinite ease-in-out both', animationDelay: '0.2s' }}></div>
+              <div style={{ width: '6px', height: '6px', background: '#339eea', borderRadius: '50%', animation: 'typing 1.4s infinite ease-in-out both', animationDelay: '0.4s' }}></div>
+            </div>
+            <span style={{
+              fontSize: '0.78rem',
+              color: '#5a7a9a',
+              fontStyle: 'italic',
+              lineHeight: 1.4,
+            }}>
+              La respuesta tomará unos minutos. Estamos consultando nuestra fuente de documentos.
+            </span>
             <style>{`
               @keyframes typing {
                 0%, 80%, 100% { transform: scale(0.4); opacity: 0.5; }

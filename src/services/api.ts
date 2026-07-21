@@ -57,6 +57,22 @@ export const ACERO_LABELS: HfMaskLabels = {
   "3": { name: "Raya", color: [255, 255, 255] }
 };
 
+// ---- Inclusiones: paleta de colores por clase ----
+const INCLUSION_PALETTE: [number, number, number][] = [
+  [255, 0, 255],   // Magenta
+  [0, 255, 255],   // Cyan
+  [255, 165, 0],   // Naranja
+  [0, 255, 128],   // Verde esmeralda
+  [255, 80, 80],   // Rojo coral
+  [128, 0, 255],   // Violeta
+  [255, 255, 0],   // Amarillo
+  [64, 224, 208],  // Turquesa
+];
+
+export function getInclusionClassColor(classId: number): [number, number, number] {
+  return INCLUSION_PALETTE[classId % INCLUSION_PALETTE.length];
+}
+
 export function pingSpaces() {
   const spaces = [
     "https://albertitechnology-agent-api.hf.space",
@@ -906,21 +922,50 @@ export async function detectInclusiones(imageUrl: string): Promise<InclusionPoly
   const extension = type.includes("png") ? "png" : "jpg";
   const file = new File([imageBlob], `micrografia.${extension}`, { type });
 
-  const formData = new FormData();
-  formData.append("file", file);
+  const endpoint = `${HF_BASE_URL}/detecciones/`;
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS = [3000, 6000, 12000];
 
-  const response = await fetch("https://dlalberti.duckdns.org:7860/detecciones/", {
-    method: "POST",
-    body: formData,
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    throw new Error("Error obteniendo detecciones del modelo");
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        body: formData,
+      });
+
+      // Errores de servidor por cold-start: reintentar
+      if (response.status === 502 || response.status === 503 || response.status === 504) {
+        lastError = new Error(`Servidor no disponible (${response.status})`);
+        if (attempt < MAX_RETRIES - 1) {
+          await wait(RETRY_DELAYS[attempt]);
+          continue;
+        }
+        throw lastError;
+      }
+
+      if (!response.ok) {
+        throw new Error("Error obteniendo detecciones del modelo");
+      }
+
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        return data;
+      }
+      return data.polygons || data.boxes || [];
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      // Error de red (ERR_FAILED, timeout, etc.): reintentar
+      if (attempt < MAX_RETRIES - 1) {
+        await wait(RETRY_DELAYS[attempt]);
+        continue;
+      }
+    }
   }
 
-  const data = await response.json();
-  if (Array.isArray(data)) {
-    return data;
-  }
-  return data.polygons || data.boxes || [];
+  throw lastError || new Error("Error obteniendo detecciones del modelo");
 }
