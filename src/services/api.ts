@@ -858,19 +858,39 @@ export async function generateMaskWithHf(
 // -------------------------------------------------------------
 // PDF REPORTS
 // -------------------------------------------------------------
-export async function generatePdf(muestraId: number | string) {
-  const res = await apiFetchWithAuth("reports/pdf/", {
+export interface ReportConfig {
+  include_masks: boolean;
+  include_histograms: boolean;
+  custom_text: string;
+  manual_conclusion: string;
+}
+
+export async function generatePdf(muestraId: number | string, config: ReportConfig) {
+  const reportApiUrlRaw = import.meta.env.VITE_REPORT_API_URL || "http://localhost:8001";
+  const reportApiUrl = reportApiUrlRaw.replace(/\/+$/, "");
+  
+  const res = await fetch(`${reportApiUrl}/api/reports/generate`, {
     method: "POST",
-    headers: getHeaders(),
-    body: JSON.stringify({ muestra_id: Number(muestraId) }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ muestra_id: Number(muestraId), config }),
   });
 
   if (!res.ok) {
     const payload = await readErrorPayload(res);
-    throw buildApiError(res, payload, "Error generando PDF");
+    throw buildApiError(res, payload, "Error generando PDF desde Report API");
   }
 
-  return res.json();
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `reporte_${muestraId}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
 }
 
 export async function getReportList(): Promise<any[]> {

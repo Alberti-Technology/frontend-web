@@ -3919,6 +3919,12 @@ export default function FileManager({
   const [dirtyPdfMuestraIds, setDirtyPdfMuestraIds] = useState<Set<string>>(
     new Set(),
   );
+  const [reportConfig, setReportConfig] = useState<api.ReportConfig>({
+    include_masks: true,
+    include_histograms: true,
+    custom_text: "",
+    manual_conclusion: "",
+  });
   const [calibratingByUrl, setCalibratingByUrl] = useState<Record<string, boolean>>({});
   const [failedCalibrationByUrl, setFailedCalibrationByUrl] = useState<Record<string, boolean>>({});
   const [inclusionsByImageUrl, setInclusionsByImageUrl] = useState<Record<string, api.InclusionPolygon[]>>({});
@@ -5144,15 +5150,6 @@ export default function FileManager({
       return;
     }
 
-    if (isMuestraLockedForPdfSelection(selectedPdfMuestraId)) {
-      pushToast(
-        "Ya se solicitó el informe de esta muestra. Cargá o calibrá nuevas micrografías para volver a enviarla.",
-        "info",
-        7600,
-      );
-      return;
-    }
-
     const selectedMuestra = apiMuestras.find(
       (mue) => String(mue.id) === String(selectedPdfMuestraId),
     );
@@ -5196,45 +5193,15 @@ export default function FileManager({
 
     try {
       setPdfLoading(true);
-      await api.generatePdf(selectedPdfMuestraId);
-      pushToast("Solicitud de informe enviada. En proceso.", "info", 5000);
-      setQueuedPdfMuestraIds((prev) => new Set(prev).add(selectedPdfMuestraId));
-      setDirtyPdfMuestraIds((prev) => {
-        const next = new Set(prev);
-        next.delete(selectedPdfMuestraId);
-        return next;
-      });
-      await refreshReportHistory();
-    } catch (e) {
-      const err = e as { data?: any; message?: string };
-      const payload = err?.data;
-
-      if (Array.isArray(payload?.micrografias_faltantes)) {
-        if (payload.micrografias_faltantes.length > 0) {
-          queueMissingCalibrationToasts(payload.micrografias_faltantes);
-        } else {
-          pushToast("Hay micrografías sin calibrar.", "error", 7200);
-        }
-      } else if (Array.isArray(payload?.regiones_sin_micrografias)) {
-        pushToast(
-          payload?.detalle || "Hay regiones sin micrografías.",
-          "error",
-          8400,
-        );
-      } else {
-        pushToast(
-          payload?.error || err?.message || "Error generando informe",
-          "error",
-        );
-      }
-
-      setPdfStatusMessage(null);
-      setShowInformeDispatchMessage(false);
+      pushToast("Generando informe, aguarde...", "info", 5000);
+      await api.generatePdf(selectedPdfMuestraId, reportConfig);
+      pushToast("Informe generado correctamente.", "success", 3000);
+    } catch (err: any) {
+      console.error(err);
+      pushToast(`Error: ${err.message}`, "error", 5000);
+    } finally {
       setPdfLoading(false);
-      return;
     }
-
-    setPdfLoading(false);
   };
 
   const bakeMaskAlpha = async (
@@ -6153,121 +6120,81 @@ export default function FileManager({
             <div
               style={{ fontSize: "0.84rem", fontWeight: 700, color: "#4d6684" }}
             >
-              Informes generados
+              Configuración del informe
             </div>
-
+            
             <div
+              className="custom-scrollbar"
               style={{
                 border: "1px solid rgba(16,36,63,0.16)",
                 borderRadius: 18,
-                padding: "10px 2px 10px 10px",
+                padding: "10px",
                 background: "#f9fcff",
                 minHeight: 120,
                 minWidth: 0,
                 display: "flex",
                 flexDirection: "column",
-                gap: 10,
+                gap: 12,
                 height: "100%",
-                overflow: "hidden",
+                overflowY: "auto",
+                fontSize: "0.85rem"
               }}
             >
-              {informesListIsEmpty ? (
-                <div className="flex flex-col items-center justify-center flex-1 text-center opacity-70 p-2">
-                  <div className="text-[#9ca3af] mb-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                  </div>
-                  <span className="text-[#6b7280] text-[0.9rem] italic m-0">Aún no hay informes que mostrar.</span>
-                </div>
-              ) : (
-                <>
+              <label style={{ display: "flex", gap: "8px", alignItems: "center", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={reportConfig.include_masks}
+                  onChange={(e) => setReportConfig(prev => ({ ...prev, include_masks: e.target.checked }))}
+                />
+                Incluir detección de bordes
+              </label>
+              
+              <label style={{ display: "flex", gap: "8px", alignItems: "center", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={reportConfig.include_histograms}
+                  onChange={(e) => setReportConfig(prev => ({ ...prev, include_histograms: e.target.checked }))}
+                />
+                Generar e incluir histogramas
+              </label>
 
-                  {pdfHistory.length > 0 && (
-                    <div
-                      className="custom-scrollbar"
-                      style={{
-                        width: "100%",
-                        flex: 1,
-                        overflowY: "auto",
-                        minHeight: 0,
-                      }}
-                    >
-                      <ul
-                        style={{
-                          listStyle: "none",
-                          padding: 0,
-                          margin: 0,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: REPORT_HISTORY_ITEM_GAP,
-                        }}
-                      >
-                        {pdfHistory.map((pdf, idx) => (
-                          <li
-                            key={pdf.id || idx}
-                            style={{
-                              display: "flex",
-                              width: "100%",
-                              gap: 8,
-                              fontSize: "0.82rem",
-                              color: "#10243f",
-                              alignItems: "center",
-                              background: "white",
-                              padding: "8px 10px",
-                              borderRadius: 10,
-                              border: "1px solid rgba(16,36,63,0.09)",
-                              minHeight: REPORT_HISTORY_ITEM_HEIGHT,
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontWeight: 500,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                flex: 1,
-                                minWidth: 0,
-                                textAlign: "left",
-                              }}
-                            >
-                              {pdf.value || `Informe_ID_${pdf.id}`}.pdf
-                            </span>
-                            
-                            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                              {pdf.status === "processing" && (
-                                <span style={{ fontSize: "0.75rem", color: "#eab308", fontWeight: 600 }}>Procesando...</span>
-                              )}
-                              {pdf.status === "error" && (
-                                <span style={{ fontSize: "0.75rem", color: "#ef4444", fontWeight: 600 }}>Error</span>
-                              )}
-                              {pdf.status === "pending" && (
-                                <span style={{ fontSize: "0.75rem", color: "#6b7280", fontWeight: 600 }}>En cola</span>
-                              )}
-                                {(pdf.status === "completed" || !pdf.status) && pdf.file && (
-                                  <a
-                                    href={pdf.file.startsWith("/") ? `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"}${pdf.file}` : pdf.file}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{
-                                    fontSize: "0.75rem",
-                                    color: "#3b82f6",
-                                    fontWeight: 600,
-                                    textDecoration: "none",
-                                    padding: "2px 6px",
-                                    background: "#eff6ff",
-                                    borderRadius: "4px"
-                                  }}
-                                >
-                                  Ver informe
-                                </a>
-                              )}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </>
-              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontWeight: 600, color: "#4d6684" }}>Observaciones</label>
+                <textarea
+                  value={reportConfig.custom_text}
+                  onChange={(e) => setReportConfig(prev => ({ ...prev, custom_text: e.target.value }))}
+                  placeholder="Texto personalizado a incluir en el informe..."
+                  style={{
+                    width: "100%",
+                    minHeight: "60px",
+                    resize: "vertical",
+                    padding: "6px",
+                    borderRadius: "6px",
+                    border: "1px solid #cbd5e0",
+                    fontSize: "0.8rem",
+                    fontFamily: "inherit"
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <label style={{ fontWeight: 600, color: "#4d6684" }}>Conclusión final</label>
+                <textarea
+                  value={reportConfig.manual_conclusion}
+                  onChange={(e) => setReportConfig(prev => ({ ...prev, manual_conclusion: e.target.value }))}
+                  placeholder="Escriba la conclusión del análisis..."
+                  style={{
+                    width: "100%",
+                    minHeight: "60px",
+                    resize: "vertical",
+                    padding: "6px",
+                    borderRadius: "6px",
+                    border: "1px solid #cbd5e0",
+                    fontSize: "0.8rem",
+                    fontFamily: "inherit"
+                  }}
+                />
+              </div>
             </div>
 
             <div
@@ -6386,19 +6313,6 @@ export default function FileManager({
                           >
                             {getMuestraDisplayName(mue)}
                           </span>
-                          {isLocked && !isSelected && (
-                            <span
-                              style={{
-                                fontSize: "0.68rem",
-                                fontWeight: 700,
-                                color: "#4d6684",
-                                textTransform: "uppercase",
-                                letterSpacing: "0.04em",
-                              }}
-                            >
-                              Enviado
-                            </span>
-                          )}
                         </li>
                       );
                     })}
@@ -6418,32 +6332,17 @@ export default function FileManager({
               minWidth: 0,
             }}
           >
-            {showInformeDispatchMessage && (
-              <div
-                style={{
-                  textAlign: "center",
-                  color: "#4d6684",
-                  fontSize: "0.84rem",
-                  lineHeight: 1.25,
-                }}
-              >
-                En breve se enviará el informe a su correo.
-              </div>
-            )}
-
             <button
               className="pdf-btn-primary"
               onClick={() => checkMicrographLimit(handleGeneratePdf)}
               disabled={
                 pdfLoading ||
-                selectedPdfMuestraLocked ||
                 !selectedPdfMuestraId ||
                 !!uploadProgress
               }
               style={{
                 opacity:
                   pdfLoading ||
-                  selectedPdfMuestraLocked ||
                   !selectedPdfMuestraId ||
                   !!uploadProgress
                     ? 0.6
